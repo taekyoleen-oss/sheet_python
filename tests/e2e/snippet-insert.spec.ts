@@ -65,7 +65,22 @@ test("코드 삽입 팝업 → 아래 새 블록·현재 블록 추가·undo →
   // ── 팝업: 그래프 그룹 → 스니펫(SVG 미리보기) → 코드 미리보기(# ▸ 접두)
   await page.getByRole("button", { name: "코드 삽입" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("코드 삽입 — 핸들링·그래프 스니펫")).toBeVisible();
+  await expect(
+    dialog.getByText("코드 삽입 — 예제 코드(통계분석·위험률 산출)·핸들링·그래프"),
+  ).toBeVisible();
+  // 좌측 목록 = 상위 카테고리 4섹션 (부록 N — 예제 코드 2종이 맨 위).
+  // 섹션 제목 "통계분석"은 같은 이름의 하위 그룹 버튼과 겹치므로 하위 그룹으로 확인한다.
+  const groups = dialog.getByTestId("snippet-groups");
+  for (const label of [
+    "전처리 과정",
+    "특성공학",
+    "데이터 분석 (회귀 모델)",
+    "모델 평가",
+    "위험률 산출 (조율·평활)",
+    "보험료·준비금",
+  ]) {
+    await expect(groups.getByRole("button", { name: label, exact: true })).toBeVisible();
+  }
   await expect(dialog.getByText("기준 블록: Sheet1!D1")).toBeVisible(); // 제목 없음 → 앵커 주소
 
   await dialog.getByRole("button", { name: "탐색 (EDA)", exact: true }).click();

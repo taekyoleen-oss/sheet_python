@@ -1,6 +1,6 @@
 "use client";
 
-// 부록 F.1 — 코드 삽입 팝업: 그룹(핸들링 12 + 그래프 3) → 스니펫(그래프는 SVG 미리보기)
+// 부록 F.1 — 코드 삽입 팝업: 그룹(예제 코드 9 + 핸들링 12 + 그래프 3) → 스니펫(그래프는 SVG 미리보기)
 // → 삽입될 코드 전체 미리보기 → [현재 블록에 추가 | 아래 새 블록으로 | 위 새 블록으로].
 // 기준 블록 = 마지막으로 편집기 포커스를 받은 코드 블록. Enter = 마지막 사용 위치로 삽입.
 // 새 블록은 자동 실행하지 않는다.
@@ -41,6 +41,7 @@ import {
 } from "@/lib/grid/snippet-placeholders";
 import { xlRefForSelection } from "@/lib/grid/xl-ref";
 import { getRuntimeClient } from "@/lib/runtime/client";
+import { EXAMPLE_SNIPPET_FAMILIES } from "@/lib/reference/exampleSnippets";
 import { PLOT_SNIPPET_GROUPS, plotInsertCode } from "@/lib/reference/plotSnippets";
 import { WRANGLE_SNIPPET_GROUPS, snippetInsertCode } from "@/lib/reference/wrangleSnippets";
 import { cn } from "@/lib/utils";
@@ -49,25 +50,44 @@ type Placement = "append" | "below" | "above";
 
 interface Group {
   key: string;
+  /** 코드 조립 방식 — plot만 다르다(예제 조각은 wrangle과 같은 규칙) */
   kind: "wrangle" | "plot";
+  /** 좌측 목록의 상위 카테고리 제목 */
+  section: string;
   label: string;
   snippets: { id: string; label: string; desc: string; code: string }[];
 }
 
+// 좌측 목록 순서 = 예제 코드 상위 카테고리(통계분석 · 위험률 산출) → 핸들링 → 그래프.
+// 통계분석과 위험률 산출은 절차가 달라 한 목록에 섞지 않는다(부록 N).
 const GROUPS: Group[] = [
+  ...EXAMPLE_SNIPPET_FAMILIES.flatMap((fam) =>
+    fam.groups.map((g) => ({
+      key: `e:${fam.id}:${g.id}`,
+      kind: "wrangle" as const,
+      section: fam.label,
+      label: g.label,
+      snippets: g.snippets,
+    })),
+  ),
   ...WRANGLE_SNIPPET_GROUPS.map((g) => ({
     key: `w:${g.id}`,
     kind: "wrangle" as const,
+    section: "핸들링",
     label: g.label,
     snippets: g.snippets,
   })),
   ...PLOT_SNIPPET_GROUPS.map((g) => ({
     key: `p:${g.id}`,
     kind: "plot" as const,
+    section: "그래프",
     label: g.label,
     snippets: g.snippets,
   })),
 ];
+
+/** 좌측 목록에 보이는 섹션 순서 (중복 제거) */
+const SECTIONS: string[] = [...new Set(GROUPS.map((g) => g.section))];
 
 /** 자리표시자를 amber로 감싼 코드 미리보기 (경량 하이라이트 + 복사) */
 function PreviewCode({ code }: { code: string }) {
@@ -129,12 +149,12 @@ function GroupList({
   onSelect: (key: string) => void;
   onFitGuide: () => void;
 }) {
-  const section = (kind: Group["kind"], title: string) => (
-    <>
+  const section = (title: string) => (
+    <Fragment key={title}>
       <p className="px-2 pb-0.5 pt-2 text-[11px] font-semibold text-muted-foreground">
         {title}
       </p>
-      {GROUPS.filter((g) => g.kind === kind).map((g) => (
+      {GROUPS.filter((g) => g.section === title).map((g) => (
         <button
           key={g.key}
           onClick={() => onSelect(g.key)}
@@ -147,12 +167,11 @@ function GroupList({
           {g.label}
         </button>
       ))}
-    </>
+    </Fragment>
   );
   return (
-    <div className="w-44 shrink-0 overflow-y-auto rounded border py-1">
-      {section("wrangle", "핸들링")}
-      {section("plot", "그래프")}
+    <div className="w-44 shrink-0 overflow-y-auto rounded border py-1" data-testid="snippet-groups">
+      {SECTIONS.map(section)}
       <p className="px-2 pb-0.5 pt-2 text-[11px] font-semibold text-muted-foreground">가이드</p>
       <button
         onClick={onFitGuide}
@@ -307,7 +326,9 @@ export default function SnippetInsertDialog() {
         }}
       >
         <DialogHeader>
-          <DialogTitle className="text-sm">코드 삽입 — 핸들링·그래프 스니펫</DialogTitle>
+          <DialogTitle className="text-sm">
+            코드 삽입 — 예제 코드(통계분석·위험률 산출)·핸들링·그래프
+          </DialogTitle>
           <DialogDescription className="text-xs">
             스니펫을 고르면 삽입될 코드가 그대로 보입니다. Enter = 마지막 사용 위치로 삽입.
           </DialogDescription>

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// 부록 K — 계리 예제 데이터 내장 워크북 5종.
+// 부록 K·M·N — 데이터 내장 예제 워크북(통계분석 · 위험률 산출).
 // 헤더 샘플 워크북 메뉴에서 열고 전체 실행 → 모든 코드 블록 status 'ok'(실런타임).
 // scipy·statsmodels 첫 로드가 있어 테스트당 5분 상한.
 
@@ -56,6 +56,38 @@ const columnUnder = (page: Page, header: string) =>
     return [];
   }, header);
 
+/**
+ * 같은 표 안의 열 읽기 — key 헤더가 있는 행에서 col 헤더를 찾아 그 아래 값들을 돌려준다.
+ * columnUnder는 헤더 이름이 여러 표에 겹치면 첫 표를 집으므로, 표를 특정해야 할 때 쓴다.
+ */
+const columnInTable = (page: Page, key: string, col: string) =>
+  page.evaluate(
+    ([k, c]) => {
+      const st = (window as any).__pygridStore.getState();
+      for (const sh of st.workbook.sheets) {
+        const hit = Object.entries(sh.cells).find(([, cell]: any) => cell.v === k);
+        if (!hit) continue;
+        const [r, kc] = (hit[0] as string).split(":").map(Number);
+        // 같은 행에서 col 헤더 찾기 (표의 왼쪽 끝이 key라는 보장은 없다)
+        let target = -1;
+        for (let j = kc; j < kc + 40; j++) {
+          if (sh.cells[`${r}:${j}`]?.v === c) {
+            target = j;
+            break;
+          }
+        }
+        if (target < 0) return [];
+        const out: unknown[] = [];
+        for (let i = 1; sh.cells[`${r + i}:${target}`] !== undefined; i++) {
+          out.push(sh.cells[`${r + i}:${target}`].v);
+        }
+        return out;
+      }
+      return [];
+    },
+    [key, col] as const,
+  );
+
 /** 헤더의 샘플 워크북 메뉴 > <label> (파일 메뉴에서 분리됨) */
 async function openSample(page: Page, label: string, title: string) {
   await page.getByRole("button", { name: "샘플 워크북", exact: true }).click();
@@ -69,24 +101,31 @@ async function openSample(page: Page, label: string, title: string) {
 }
 
 /** 전체 실행 → 모든 코드 블록이 'ok'가 될 때까지 대기 */
-async function runAll(page: Page, codeBlocks: number) {
+async function runAll(page: Page, codeBlocks: number, timeout = 270_000) {
   await page.getByRole("button", { name: "전체 실행", exact: true }).click();
   await expect
     .poll(async () => (await codeStatuses(page)).join(","), {
-      timeout: 270_000,
+      timeout,
       intervals: [3000],
     })
     .toBe(Array(codeBlocks).fill("ok").join(","));
 }
 
-const SAMPLES = [
+const SAMPLES: { label: string; title: string; codeBlocks: number; timeout?: number }[] = [
+  {
+    // 부록 N — 통계분석 카테고리. 16단계 × scikit-learn 첫 로드라 상한을 넉넉히 둔다
+    label: "임금 회귀 예측 (5단계)",
+    title: "임금 회귀 예측 — 통계분석 5단계",
+    codeBlocks: 16,
+    timeout: 540_000,
+  },
   { label: "위험률·생명표", title: "위험률·생명표 예제", codeBlocks: 4 },
   { label: "보험료 요인 분석 (GLM)", title: "보험료 요인 분석 예제", codeBlocks: 4 },
   { label: "빈도·심도 모형", title: "빈도·심도 모형 예제", codeBlocks: 5 },
   { label: "생존분석·유지율", title: "생존분석·유지율 예제", codeBlocks: 4 },
   { label: "지급준비금 (체인래더)", title: "지급준비금 체인래더 예제", codeBlocks: 5 },
   {
-    label: "보험료 산출 (정기보험)",
+    label: "정기보험 (계산기수)",
     title: "보험료 산출 — 정기보험(계산기수·준비금)",
     codeBlocks: 6,
   },
@@ -134,11 +173,11 @@ const SAMPLES = [
 
 for (const s of SAMPLES) {
   test(`샘플 워크북: ${s.label} — 로드 직후 전체 실행 성공`, async ({ page }) => {
-    test.setTimeout(300_000);
+    test.setTimeout((s.timeout ?? 270_000) + 60_000);
     await page.goto("/");
     await waitForApp(page);
     await openSample(page, s.label, s.title);
-    await runAll(page, s.codeBlocks);
+    await runAll(page, s.codeBlocks, s.timeout);
 
     // 데이터가 시트에 내장되어 있어야 한다 (외부 파일 의존 없음)
     const dataRows = await page.evaluate(
@@ -163,7 +202,7 @@ for (const s of SAMPLES) {
       // 생존표 spill — 해지 시점 62개
       expect(await spillRowsUnder(page, "생존확률")).toBe(62);
     }
-    if (s.label === "보험료 산출 (정기보험)") {
+    if (s.label === "정기보험 (계산기수)") {
       // 부록 M ② — 검산 표의 "차이" 열이 전부 허용오차(1e-6) 안이어야 한다
       const diffs = await columnUnder(page, "차이");
       expect(diffs.length).toBe(9);
@@ -329,6 +368,59 @@ for (const s of SAMPLES) {
         ).filter((c: any) => String(c.v ?? "").startsWith("[Figure")).length,
       );
       expect(figs).toBeGreaterThan(0);
+    }
+    if (s.label === "임금 회귀 예측 (5단계)") {
+      // 부록 N ① — 원본 노트북과 같은 534행 11열이 시트에 들어 있다
+      const shape = await page.evaluate(() => {
+        const st = (window as any).__pygridStore.getState();
+        const sh = st.workbook.sheets.find((x: any) => x.name === "wage");
+        let maxR = 0;
+        for (const k of Object.keys(sh.cells)) maxR = Math.max(maxR, Number(k.split(":")[0]));
+        return { rows: maxR, sheets: st.workbook.sheets.map((x: any) => x.name) };
+      });
+      expect(shape.rows).toBe(534); // 헤더 1 + 534행 → 마지막 행 인덱스 534
+      expect(shape.sheets).toContain("meta"); // 코드북 시트도 함께 내장
+
+      // ② 1단계 품질 점검표 — 11개 열이 그대로 spill
+      expect(await spillRowsUnder(page, "0비율")).toBe(11);
+
+      // ③ 7단계 설계행렬 — 원-핫으로 16열
+      expect(await spillRowsUnder(page, "train표준편차")).toBe(16);
+
+      // ④ 9단계 eta^2 — 범주형 7 + 수치형 3 = 10행, 전부 0~1
+      const eta = await columnUnder(page, "eta2");
+      expect(eta.length).toBe(10);
+      for (const v of eta) {
+        expect(Number(v)).toBeGreaterThanOrEqual(0);
+        expect(Number(v)).toBeLessThanOrEqual(1);
+      }
+
+      // ⑤ 14단계 모델 비교표 — 5종이 R2_test 내림차순, 전부 규제/비선형 회귀
+      const models = await columnUnder(page, "model");
+      expect(models).toHaveLength(5);
+      expect(new Set(models as string[])).toEqual(
+        new Set(["Ridge", "Lasso", "ElasticNet", "Polynomial(2)", "Log(Ridge)"]),
+      );
+      // R2_test는 13단계 표에도 있으므로 "model" 헤더가 있는 14단계 표에서 읽는다
+      const r2 = (await columnInTable(page, "model", "R2_test")).map(Number);
+      expect(r2).toHaveLength(5);
+      expect([...r2].sort((a, b) => b - a)).toEqual(r2); // 내림차순 정렬
+      for (const v of r2) expect(v).toBeGreaterThan(0); // 설명력이 있어야 한다
+      // 13단계 다항 차수 비교 — 차수를 올리면 train R2는 단조 증가(과적합의 정의)
+      const polyTrain = (await columnInTable(page, "모형", "R2_train"))
+        .slice(0, 3)
+        .map(Number);
+      expect(polyTrain).toHaveLength(3);
+      expect([...polyTrain].sort((a, b) => a - b)).toEqual(polyTrain);
+
+      // ⑥ 2·15단계 그림 2장(분포 비교 · 잔차 진단)이 객체 카드로 놓인다
+      const figs = await page.evaluate(() => {
+        const st = (window as any).__pygridStore.getState();
+        return st.workbook.sheets.flatMap((sh: any) =>
+          Object.values(sh.cells).filter((c: any) => String(c.v ?? "").startsWith("[Figure")),
+        ).length;
+      });
+      expect(figs).toBe(2);
     }
     if (s.label === "지급준비금 (체인래더)") {
       // 준비금 — 첫 사고연도는 완전 진전이라 0

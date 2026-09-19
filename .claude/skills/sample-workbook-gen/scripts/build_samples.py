@@ -280,7 +280,7 @@ def _si_text(node):
     return "".join(parts)
 
 
-def _read_xlsx_stdlib(path):
+def _read_xlsx_stdlib(path, sheet=0):
     """표준 라이브러리만으로 xlsx 첫 시트를 읽는다(단순 표 전제 — 병합·수식·날짜 없음).
 
     ponytail: sharedStrings + sheet1.xml만 본다. 서식·날짜 시리얼이 필요해지면 openpyxl 경로를 쓸 것.
@@ -293,7 +293,7 @@ def _read_xlsx_stdlib(path):
         if "xl/sharedStrings.xml" in z.namelist():
             for si in ET.fromstring(z.read("xl/sharedStrings.xml")):
                 shared.append(_si_text(si))
-        root = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+        root = ET.fromstring(z.read(f"xl/worksheets/sheet{sheet + 1}.xml"))
         grid = []
         for row in root.iter(NS + "row"):
             vals = {}
@@ -321,14 +321,14 @@ def _read_xlsx_stdlib(path):
     return [r + [None] * (w - len(r)) for r in grid]
 
 
-def read_xlsx(name):
-    """public/samples/<name>.xlsx 첫 시트 → 2차원 값 배열(헤더 포함)."""
+def read_xlsx(name, sheet=0):
+    """public/samples/<name>.xlsx의 sheet번째 시트 → 2차원 값 배열(헤더 포함)."""
     path = XLSX_DIR / f"{name}.xlsx"
     try:
         import openpyxl
     except ImportError:
-        return _read_xlsx_stdlib(path)
-    ws = openpyxl.load_workbook(path, data_only=True, read_only=True).worksheets[0]
+        return _read_xlsx_stdlib(path, sheet)
+    ws = openpyxl.load_workbook(path, data_only=True, read_only=True).worksheets[sheet]
     return [list(r) for r in ws.iter_rows(values_only=True)]
 
 
@@ -6413,6 +6413,690 @@ fig''',
     )
 
 
+# ── 부록 N — 임금 회귀 예측 워크북 (통계분석 카테고리) ────────────────────
+#
+# 원본: 패스트캠퍼스 「Part 8. 머신러닝 / Chapter 03 — Regression(회귀)」 실습 노트북.
+# 데이터는 CPS 1985 임금 조사(534행 × 11열, public/samples/wage.xlsx에 내장).
+# 노트북의 5단계 흐름(Data Info → EDA → Feature Engineering → Modeling → Evaluation)을
+# 앱의 예제 코드 카테고리(통계분석·전처리 과정·특성공학·데이터 분석·모델 평가)로 옮긴다.
+#
+# 원본과 의도적으로 다른 점(= '분석 과정 보완'):
+#  · 범주형 코드(RACE 1·2·3, OCCUPATION 1~6 …)를 숫자로 두지 않고 원-핫으로 편다.
+#    원본은 코드값을 그대로 StandardScaler에 넣어 "백인 = 기타의 3배"라는 없는 순서를 넣었다.
+#  · 변수 선별에 IV/WoE(분류 전용) 대신 상관비 eta^2를 쓴다.
+#  · 타깃이 오른쪽으로 치우쳐(왜도 1.70) 로그 모형을 후보에 넣고, 역변환은 Duan 스미어링으로 보정한다.
+#  · AGE ≈ EDUCATION + EXPERIENCE + 6 이라는 정의상 공선성을 VIF로 드러내고 규제 회귀로 받는다.
+#  · 단일 분할 성능 대신 5겹 교차검증 평균±표준편차를 함께 본다.
+#  · 모델은 Ridge·Lasso·ElasticNet + 다항·로그로 한정한다(트리·베이지안 최적화 제외).
+
+WAGE_REF = 'df = xl("wage!A1:K535", headers=True)'
+WAGE_CONST = '''TARGET = "WAGE"
+CAT = ["SOUTH", "SEX", "UNION", "RACE", "OCCUPATION", "SECTOR", "MARR"]   # 코드로 저장된 범주형
+NUM = ["EDUCATION", "EXPERIENCE", "AGE"]'''
+
+#: 모델 단계가 공유하는 준비 코드 — 원-핫 → 7:3 분할 → train 기준 표준화
+WAGE_PREP = '''X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
+y = df[TARGET].astype(float)
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=1234)
+sc = StandardScaler().fit(X_tr)              # 표준화는 train에서만 fit (정보 누수 방지)
+A, B = sc.transform(X_tr), sc.transform(X_te)'''
+
+WAGE_MIMP = '''from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error'''
+
+WAGE_STEPS = [
+    # ── ① 통계분석 ────────────────────────────────────────────────────
+    (2,
+     "1단계 — 데이터 개요·품질 점검 〔통계분석〕",
+     "## 1단계 — 데이터 개요·품질 점검 〔통계분석〕\n\n"
+     "`wage` 시트의 534행 × 11열을 `xl()`로 읽습니다. 모델을 고르기 전에 **데이터가 성한지** 먼저 봅니다 — "
+     "행·열 수, 열마다의 형, 결측·중복, 그리고 0의 비율입니다.\n\n"
+     "0 비율을 따로 보는 이유는 0이 진짜 값일 때와 '해당 없음'일 때가 섞이기 때문입니다. "
+     "`SOUTH`·`SEX`·`UNION`·`MARR`의 0은 값(남부 아님·남성·비조합원·미혼)이고, `EXPERIENCE`의 0은 신입입니다.\n\n"
+     "> 같은 코드를 다른 표에 쓰려면 **코드 삽입 ▸ 통계분석 ▸ 통계분석 ▸ 데이터 개요**를 넣으세요.",
+     "데이터 개요·결측·중복·0 비율",
+     WAGE_REF + '''
+print("shape:", df.shape)
+print("중복 행:", int(df.duplicated().sum()), " 결측 합계:", int(df.isna().sum().sum()))
+
+chk = pd.DataFrame({
+    "dtype": df.dtypes.astype(str),
+    "결측": df.isna().sum(),
+    "고유값": df.nunique(),
+    "0비율": (df == 0).sum() / len(df),
+    "최소": df.min(numeric_only=True),
+    "최대": df.max(numeric_only=True),
+})
+chk.reset_index(names="열").round(4)''',
+     "values"),
+
+    (19,
+     "2단계 — 타깃(WAGE) 분포와 로그 변환 〔통계분석〕",
+     "## 2단계 — 타깃 분포와 로그 변환 〔통계분석〕\n\n"
+     "예측 대상인 시간당 임금은 오른쪽 꼬리가 깁니다(**왜도 1.70**). 소수의 고임금이 평균을 끌어올리는 모양이라 "
+     "선형회귀의 잔차 정규성 가정과 잘 맞지 않습니다.\n\n"
+     "로그를 씌우면 왜도가 **0.10**까지 내려갑니다 — 4단계에서 로그 모형을 후보에 넣는 근거입니다. "
+     "다만 로그로 예측한 값을 원래 단위로 되돌릴 때 `exp()`만 쓰면 평균이 체계적으로 낮아지므로, "
+     "13단계에서 **Duan 스미어링**으로 보정합니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 통계분석 ▸ **타깃 분포·정규성**",
+     "분포 비교 — 원척도 vs 로그",
+     "import matplotlib.pyplot as plt\nfrom scipy import stats\n" + WAGE_REF + '''
+TARGET = "WAGE"
+
+y = df[TARGET].astype(float)
+ly = np.log(y)
+print(f"원척도   평균 {y.mean():.2f}  중앙 {y.median():.2f}  왜도 {y.skew():.3f}  "
+      f"Shapiro p={stats.shapiro(y)[1]:.2e}")
+print(f"로그척도 평균 {ly.mean():.2f}  중앙 {ly.median():.2f}  왜도 {ly.skew():.3f}  "
+      f"Shapiro p={stats.shapiro(ly)[1]:.2e}")
+
+fig, ax = plt.subplots(1, 2, figsize=(9, 3.4))
+ax[0].hist(y, bins=30, color="#4A90C2", edgecolor="white", linewidth=0.4)
+ax[0].set_title(f"{TARGET} — 시간당 임금(달러)")
+ax[1].hist(ly, bins=30, color="#D9A441", edgecolor="white", linewidth=0.4)
+ax[1].set_title(f"log({TARGET})")
+for a in ax:
+    a.set_ylabel("빈도")
+fig.tight_layout()
+fig''',
+     "object"),
+
+    (27,
+     "3단계 — 상관구조와 다중공선성 〔통계분석〕",
+     "## 3단계 — 상관구조와 다중공선성 〔통계분석〕\n\n"
+     "이 데이터에는 **정의상 겹치는 변수**가 있습니다. `AGE`는 사실상 `EDUCATION + EXPERIENCE + 6`이라서 "
+     "`AGE`와 `EXPERIENCE`의 상관이 **0.978**입니다.\n\n"
+     "겹치는 변수를 그대로 넣으면 계수가 서로를 상쇄하며 크게 흔들립니다(부호가 뒤집히기도 합니다). "
+     "**변수를 버리거나(Lasso), 계수를 눌러(Ridge) 안정시키는** 규제 회귀가 필요해지는 지점입니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 통계분석 ▸ **상관분석**",
+     "상관행렬·타깃 상관 순위·고상관 쌍",
+     WAGE_REF + '''
+TARGET = "WAGE"
+
+corr = df.corr(numeric_only=True)
+rank = corr[TARGET].drop(TARGET).abs().sort_values(ascending=False)
+pairs = [(a, b, round(float(corr.at[a, b]), 3))
+         for a in corr.columns for b in corr.columns
+         if a < b and abs(corr.at[a, b]) > 0.9]
+print("타깃과의 상관(절대값) 상위:", rank.head(3).round(3).to_dict())
+print("설명변수 간 |r| > 0.9:", pairs, " ← 정의상 겹치는 쌍")
+print(f"검산  AGE - EDUCATION - EXPERIENCE 의 고유값: "
+      f"{sorted((df['AGE'] - df['EDUCATION'] - df['EXPERIENCE']).unique().tolist())}")
+
+out = pd.DataFrame({"변수": rank.index, "타깃상관": rank.to_numpy()})
+out["부호"] = [np.sign(corr.at[TARGET, v]) for v in rank.index]
+out["최대타변수상관"] = [corr[v].drop([v, TARGET]).abs().max() for v in rank.index]
+out.round(4)''',
+     "values"),
+
+    (47,
+     "4단계 — 범주형 집단 비교 (ANOVA) 〔통계분석〕",
+     "## 4단계 — 범주형 집단 비교 (ANOVA) 〔통계분석〕\n\n"
+     "`OCCUPATION`·`SECTOR` 같은 코드 변수는 **평균을 낼 수 없는 값**입니다. `OCCUPATION` 평균이 4.15라는 말은 아무 뜻이 없습니다. "
+     "대신 **집단별 타깃 평균이 서로 다른지**를 봅니다.\n\n"
+     "분산분석(ANOVA)의 p값이 0.05보다 작으면 '집단 간 임금 차이를 우연으로 보기 어렵다'는 뜻이고, "
+     "그 변수는 모형에 넣을 값어치가 있습니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 통계분석 ▸ **집단 비교**",
+     "범주형 7종 ANOVA — 집단 평균 차이",
+     "from scipy import stats\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+y = df[TARGET].astype(float)
+rows = []
+for c in CAT:
+    grp = [y[df[c] == v].to_numpy() for v in sorted(df[c].unique())]
+    grp = [g for g in grp if len(g) > 1]
+    F, p = stats.f_oneway(*grp)
+    lo = min(g.mean() for g in grp)
+    hi = max(g.mean() for g in grp)
+    rows.append({"변수": c, "수준수": len(grp), "F": F, "p": p,
+                 "최저평균": lo, "최고평균": hi, "격차배수": hi / lo,
+                 "유의(0.05)": "○" if p < 0.05 else "·"})
+res = pd.DataFrame(rows).sort_values("F", ascending=False).reset_index(drop=True)
+print("F가 클수록 집단 간 차이가 집단 내 산포보다 두드러진다")
+res.round(4)''',
+     "values"),
+
+    # ── ② 전처리 과정 ──────────────────────────────────────────────────
+    (61,
+     "5단계 — 수치형·범주형 구분을 코드북으로 바로잡기 〔전처리 과정〕",
+     "## 5단계 — 수치형·범주형 구분 〔전처리 과정〕\n\n"
+     "`dtype`만 보면 11개 열이 전부 숫자입니다. 하지만 `meta` 시트(코드북)를 보면 7개는 **코드**입니다 — "
+     "`RACE` 1=기타·2=히스패닉·3=백인처럼 크기에 뜻이 없습니다.\n\n"
+     "원본 노트북은 이 코드값을 그대로 `StandardScaler`에 넣었습니다. 그러면 모형은 "
+     "'백인(3)이 기타(1)의 3배'라는 **없는 순서**를 학습합니다. 7단계에서 원-핫으로 펴는 이유입니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 전처리 과정 ▸ **수치형·범주형 구분**",
+     "코드북(meta) 기준 열 분류",
+     WAGE_REF + '''
+meta = xl("meta!A1:H8", headers=True)
+TARGET = "WAGE"
+
+# meta에 열 이름이 등재되어 있으면 그 열의 값은 '코드'다 — 범주형으로 되돌린다
+cat = [c for c in meta.columns if c != "value" and c in df.columns]
+num = [c for c in df.columns if c not in cat and c != TARGET]
+print("수치형:", num)
+print("범주형:", cat)
+
+rows = []
+for c in num + cat:
+    vals = sorted(df[c].unique())
+    labels = ""
+    if c in cat:
+        labels = " / ".join(f"{int(v)}={meta.loc[meta['value'] == v, c].iloc[0]}"
+                            for v in vals if meta.loc[meta["value"] == v, c].notna().any())
+    rows.append({"열": c, "구분": "수치형" if c in num else "범주형",
+                 "고유값": len(vals), "코드 뜻": labels})
+pd.DataFrame(rows)''',
+     "values"),
+
+    (76,
+     "6단계 — 결측·중복·이상치 점검 〔전처리 과정〕",
+     "## 6단계 — 결측·중복·이상치 점검 〔전처리 과정〕\n\n"
+     "이 데이터는 결측과 완전 중복이 없습니다. 그래도 절차는 남겨 둡니다 — 실제 데이터로 바꾸면 바로 걸립니다.\n\n"
+     "이상치는 **1.5 × IQR** 밖으로 셉니다. 임금은 위쪽으로 긴 꼬리라 상단에 몰려 있는데, "
+     "표본이 534건뿐이라 **버리지 않고 경계로 자릅니다**(winsorize). 자른 뒤 왜도가 얼마나 내려가는지 함께 봅니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 전처리 과정 ▸ **결측·중복 처리** / **이상치**",
+     "결측·중복·IQR 이상치",
+     WAGE_REF + '''
+TARGET = "WAGE"
+
+rows = [{"점검": "행 수", "값": float(len(df))},
+        {"점검": "완전 중복 행", "값": float(df.duplicated().sum())},
+        {"점검": "결측 셀", "값": float(df.isna().sum().sum())}]
+
+q1, q3 = df[TARGET].quantile([0.25, 0.75])
+iqr = q3 - q1
+lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+mask = (df[TARGET] < lo) | (df[TARGET] > hi)
+w = df[TARGET].clip(lo, hi)
+rows += [
+    {"점검": "IQR 하한", "값": float(lo)},
+    {"점검": "IQR 상한", "값": float(hi)},
+    {"점검": "이상치 건수", "값": float(mask.sum())},
+    {"점검": "이상치 비율", "값": float(mask.mean())},
+    {"점검": "왜도(원척도)", "값": float(df[TARGET].skew())},
+    {"점검": "왜도(winsorize)", "값": float(w.skew())},
+    {"점검": "왜도(로그)", "값": float(np.log(df[TARGET]).skew())},
+]
+print(f"상한 {hi:.2f}달러를 넘는 {int(mask.sum())}건은 버리지 않는다 — "
+      f"534건뿐이라 정보 손실이 더 크다")
+pd.DataFrame(rows).round(4)''',
+     "values"),
+
+    (92,
+     "7단계 — 원-핫 인코딩·분할·표준화 〔전처리 과정〕",
+     "## 7단계 — 원-핫 인코딩·분할·표준화 〔전처리 과정〕\n\n"
+     "세 가지를 **이 순서로** 합니다.\n\n"
+     "1. **원-핫** — 범주형 7개를 0/1 열로 펴고 기준범주 하나씩은 절편에 흡수시킵니다(`drop_first=True`). 10열 → 16열.\n"
+     "2. **분할** — 7:3, `random_state=1234`로 고정해 매번 같은 분할이 나오게 합니다.\n"
+     "3. **표준화** — `fit`은 **train에서만** 합니다. test 통계까지 써서 `fit`하면 test 정보가 새어 들어와 "
+     "성능이 실제보다 좋게 나옵니다(leakage).\n\n"
+     "표준화 결과 train 평균은 정확히 0, test 평균은 0 근처의 작은 값입니다 — 이게 정상입니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 전처리 과정 ▸ **범주형 인코딩** / **train/test 분할 + 표준화**",
+     "16열 설계행렬 · 분할 · 표준화 점검",
+     WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+
+print(f"설계행렬 {X.shape[1]}열 (원본 {df.shape[1] - 1}열)  train {X_tr.shape[0]}행 / test {X_te.shape[0]}행")
+pd.DataFrame({
+    "변수": X.columns,
+    "원본평균": X_tr.mean().to_numpy(),
+    "train평균": A.mean(0),
+    "train표준편차": A.std(0),
+    "test평균": B.mean(0),
+}).round(6)''',
+     "values"),
+
+    # ── ③ 특성공학 ────────────────────────────────────────────────────
+    (114,
+     "8단계 — 구간화로 비선형 신호 찾기 〔특성공학〕",
+     "## 8단계 — 구간화로 비선형 신호 찾기 〔특성공학〕\n\n"
+     "연속 변수를 분위수로 잘라 **구간별 평균 임금**을 봅니다. 평균이 단조롭게 오르면 선형항으로 충분하고, "
+     "중간에 꺾이면 제곱항이나 구간 더미가 필요하다는 신호입니다.\n\n"
+     "`EXPERIENCE`가 그렇습니다 — 경력이 쌓일수록 임금이 오르다가 후반에 완만해집니다(수확체감). "
+     "10단계의 `EXPERIENCE²`, 13단계의 다항회귀가 이걸 받습니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 특성공학 ▸ **구간화(분위수)**",
+     "EDUCATION·EXPERIENCE·AGE 4분위 구간별 평균",
+     WAGE_REF + '''
+TARGET = "WAGE"
+
+rows = []
+for col in ["EDUCATION", "EXPERIENCE", "AGE"]:
+    grp, bins = pd.qcut(df[col], q=4, duplicates="drop", retbins=True)
+    g = df.groupby(grp, observed=True)[TARGET].agg(["size", "mean"])
+    for i, (interval, r) in enumerate(g.iterrows(), 1):
+        rows.append({"변수": col, "구간": f"Q{i}", "경계": str(interval),
+                     "건수": int(r["size"]), "평균임금": float(r["mean"]),
+                     "전체대비": float(r["mean"]) / df[TARGET].mean()})
+out = pd.DataFrame(rows)
+print("구간별 평균이 단조로우면 선형항으로 충분, 꺾이면 제곱항·구간더미를 검토한다")
+out.round(4)''',
+     "values"),
+
+    (132,
+     "9단계 — η²(상관비)로 변수 선별 〔특성공학〕",
+     "## 9단계 — η²(상관비)로 변수 선별 〔특성공학〕\n\n"
+     "원본 노트북은 **IV(Information Value)·WoE**를 소개합니다. 그런데 IV는 타깃이 0/1인 **분류 전용** 지표라 "
+     "연속형 임금에는 그대로 쓸 수 없습니다(`Good/Bad` 구성비를 정의할 수 없습니다).\n\n"
+     "회귀에서 같은 자리에 오는 지표가 **상관비 η²**입니다.\n\n"
+     "$$\\eta^2 = \\frac{\\text{집단 간 제곱합}}{\\text{전체 제곱합}}$$\n\n"
+     "0~1 사이 값이고, 그 변수로 집단을 나눴을 때 타깃 분산이 얼마나 설명되는지를 뜻합니다. "
+     "수치형은 구간화한 뒤 같은 식을 쓰면 **범주형과 한 표에서 비교**할 수 있습니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 특성공학 ▸ **설명력 지표 η²(상관비)**",
+     "범주형·수치형 통합 η² 순위",
+     "from scipy import stats\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+y = df[TARGET].astype(float)
+sst = float(((y - y.mean()) ** 2).sum())
+
+def eta2_of(key):
+    grp = [y[key == v].to_numpy() for v in pd.unique(key)]
+    grp = [g for g in grp if len(g) > 1]
+    ssb = sum(len(g) * (g.mean() - y.mean()) ** 2 for g in grp)
+    F, p = stats.f_oneway(*grp)
+    return ssb / sst, F, p, len(grp)
+
+rows = []
+for c in CAT:
+    e, F, p, k = eta2_of(df[c])
+    rows.append({"변수": c, "유형": "범주형", "수준수": k, "eta2": e, "F": F, "p": p})
+for c in NUM:
+    e, F, p, k = eta2_of(pd.qcut(df[c], q=4, duplicates="drop").astype(str))
+    rows.append({"변수": c, "유형": "수치형(4분위)", "수준수": k, "eta2": e, "F": F, "p": p})
+
+out = pd.DataFrame(rows).sort_values("eta2", ascending=False).reset_index(drop=True)
+out["판정"] = np.where(out["eta2"] >= 0.10, "강함",
+                       np.where(out["eta2"] >= 0.03, "보통", "약함"))
+print("IV는 분류 전용 — 회귀에서는 eta^2가 같은 자리를 맡는다")
+out.round(4)''',
+     "values"),
+
+    (148,
+     "10단계 — 파생변수·다항 특성 〔특성공학〕",
+     "## 10단계 — 파생변수·다항 특성 〔특성공학〕\n\n"
+     "8단계에서 본 수확체감을 열로 만듭니다.\n\n"
+     "| 파생변수 | 뜻 |\n|---|---|\n"
+     "| `EXP2 = EXPERIENCE²` | 경력의 수확체감(위로 볼록) |\n"
+     "| `EXP_per_AGE` | 나이 대비 경력 밀도 |\n"
+     "| `UNIONxEDU` | 조합원이면서 학력이 높을 때만 생기는 추가 효과 |\n"
+     "| `EDUxEXP` | 학력과 경력의 상호작용 |\n\n"
+     "`PolynomialFeatures(2)`는 이걸 **자동으로** 만들어 줍니다 — 수치형 3열이 9열(원항 3 + 제곱 3 + 교차 3)이 됩니다. "
+     "더미까지 펼치면 열이 폭발하므로 수치형만 골라 펼칩니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 특성공학 ▸ **파생변수** / **다항 특성 생성**",
+     "파생변수 4종 + PolynomialFeatures(2) 상관",
+     "from sklearn.preprocessing import PolynomialFeatures\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+d = df.copy()
+d["EXP2"] = d["EXPERIENCE"] ** 2
+d["EXP_per_AGE"] = d["EXPERIENCE"] / d["AGE"]
+d["UNIONxEDU"] = d["UNION"] * d["EDUCATION"]
+d["EDUxEXP"] = d["EDUCATION"] * d["EXPERIENCE"]
+made = ["EXP2", "EXP_per_AGE", "UNIONxEDU", "EDUxEXP"]
+
+pf = PolynomialFeatures(degree=2, include_bias=False)
+Z = pd.DataFrame(pf.fit_transform(df[NUM].astype(float)),
+                 columns=pf.get_feature_names_out(NUM))
+print(f"PolynomialFeatures(2): {len(NUM)}열 → {Z.shape[1]}열")
+
+y = df[TARGET].astype(float)
+out = pd.concat([
+    pd.DataFrame({"변수": NUM, "출처": "원본", "타깃상관": [d[c].corr(y) for c in NUM]}),
+    pd.DataFrame({"변수": made, "출처": "직접 파생", "타깃상관": [d[c].corr(y) for c in made]}),
+    pd.DataFrame({"변수": Z.columns, "출처": "Polynomial(2)",
+                  "타깃상관": [Z[c].corr(y) for c in Z.columns]}),
+]).drop_duplicates("변수")
+out["절대상관"] = out["타깃상관"].abs()
+out.sort_values("절대상관", ascending=False).reset_index(drop=True).round(4)''',
+     "values"),
+
+    # ── ④ 데이터 분석 (회귀 모델) ─────────────────────────────────────
+    (170,
+     "11단계 — 기준선 OLS와 VIF 진단 〔데이터 분석〕",
+     "## 11단계 — 기준선 OLS와 VIF 진단 〔데이터 분석〕\n\n"
+     "규제 없는 다중선형회귀로 **기준 성능**을 잡습니다. 여기서 나온 R²보다 나아지지 않는 모델은 쓸 이유가 없습니다.\n\n"
+     "동시에 **VIF**(분산팽창계수)를 봅니다. 10을 넘으면 그 변수는 다른 변수들로 거의 설명된다는 뜻이고, "
+     "계수가 표본이 조금만 바뀌어도 크게 흔들립니다. 3단계에서 본 `AGE ≈ EDUCATION + EXPERIENCE + 6` 때문에 "
+     "세 변수의 VIF가 함께 튑니다 — **12단계 규제 회귀로 넘어갈 근거**입니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 데이터 분석 ▸ **기준선 OLS·VIF 진단**",
+     "OLS 계수·p값·VIF",
+     "import statsmodels.api as sm\n"
+     "from statsmodels.stats.outliers_influence import variance_inflation_factor\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
+y = df[TARGET].astype(float)
+res = sm.OLS(y, sm.add_constant(X)).fit()
+print(f"R2 = {res.rsquared:.4f}   adj.R2 = {res.rsquared_adj:.4f}   F p = {res.f_pvalue:.3e}")
+
+Xc = sm.add_constant(X).astype(float).to_numpy()
+vif = [variance_inflation_factor(Xc, i) for i in range(Xc.shape[1])]
+out = pd.DataFrame({"변수": ["const"] + list(X.columns),
+                    "계수": res.params.to_numpy(),
+                    "표준오차": res.bse.to_numpy(),
+                    "p값": res.pvalues.to_numpy(),
+                    "VIF": vif})
+out["유의"] = np.where(out["p값"] < 0.05, "○", "·")
+out["공선성"] = np.where(out["VIF"] > 10, "경보", "")
+print("VIF 상위:", out.nlargest(4, "VIF")[["변수", "VIF"]].round(1).to_dict("records"))
+out.round(4)''',
+     "values"),
+
+    (194,
+     "12단계 — 선형회귀 3종: Ridge·Lasso·ElasticNet 〔데이터 분석〕",
+     "## 12단계 — Ridge·Lasso·ElasticNet 〔데이터 분석〕\n\n"
+     "세 모델 모두 **계수가 커지면 벌점을 매기는** 선형회귀입니다. 벌점의 모양만 다릅니다.\n\n"
+     "| 모델 | 벌점 | 효과 |\n|---|---|---|\n"
+     "| Ridge | L2 (계수²의 합) | 계수를 **줄이지만 0으로 만들지는 않음** — 겹치는 변수들에 영향을 나눠 줌 |\n"
+     "| Lasso | L1 (계수 절대값의 합) | 쓸모가 적은 계수를 **정확히 0**으로 — 변수 선택이 함께 일어남 |\n"
+     "| ElasticNet | L1·L2 배합 | 겹치는 변수 묶음을 함께 살리면서 일부는 버림 |\n\n"
+     "규제 강도 `alpha`는 눈대중으로 정하지 않고 **5겹 교차검증**으로 고릅니다(`RidgeCV`·`LassoCV`·`ElasticNetCV`).\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 데이터 분석 ▸ **Ridge** / **Lasso** / **ElasticNet**",
+     "3종 계수 비교 — 무엇이 0이 되는가",
+     "from sklearn.linear_model import LinearRegression, RidgeCV, LassoCV, ElasticNetCV\n"
+     + WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+
+fits = {
+    "OLS": LinearRegression(),
+    "Ridge": RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5),
+    "Lasso": LassoCV(alphas=np.logspace(-3, 1, 60), cv=5, max_iter=50000, random_state=0),
+    "ElasticNet": ElasticNetCV(l1_ratio=[0.3, 0.5, 0.7, 0.9, 1.0],
+                               alphas=np.logspace(-3, 1, 30), cv=5,
+                               max_iter=50000, random_state=0),
+}
+coefs = {"변수": list(X.columns)}
+for name, est in fits.items():
+    m = est.fit(A, y_tr)
+    coefs[name] = m.coef_
+    alpha = getattr(m, "alpha_", None)
+    print(f"{name:11s} R2 test {r2_score(y_te, m.predict(B)):.4f}   "
+          f"0이 아닌 계수 {int((m.coef_ != 0).sum()):2d}/{X.shape[1]}"
+          + (f"   alpha={alpha:.4g}" if alpha else "")
+          + (f"   l1_ratio={m.l1_ratio_}" if hasattr(m, "l1_ratio_") else ""))
+
+out = pd.DataFrame(coefs)
+out["Lasso 선택"] = np.where(out["Lasso"] != 0, "○", "· 제외")
+out.reindex(out["Ridge"].abs().sort_values(ascending=False).index).reset_index(drop=True).round(4)''',
+     "values"),
+
+    (216,
+     "13단계 — 비선형회귀: 다항 모형과 로그 모형 〔데이터 분석〕",
+     "## 13단계 — 비선형회귀: 다항·로그 〔데이터 분석〕\n\n"
+     "**① 다항(polynomial)** — 수치형 3열만 제곱·교차항까지 펼치고 더미는 그대로 둡니다. "
+     "차수를 올리면 train R²는 계속 오르지만 test R²는 어느 지점에서 꺾입니다. 그 직전이 적정 복잡도입니다.\n\n"
+     "**② 로그(log) 모형** — `log(WAGE)`를 예측합니다. 표준화 계수에 100을 곱하면 "
+     "'그 변수가 1표준편차 늘 때 임금 몇 %'로 읽힙니다.\n\n"
+     "역변환에는 함정이 있습니다. $E[\\log Y]$의 지수는 $E[Y]$가 아니라 **더 작습니다**(Jensen 부등식). "
+     "그래서 **Duan 스미어링 계수**(잔차 지수의 평균)를 곱해 보정합니다.\n\n"
+     "$$\\hat{Y} = \\exp(\\widehat{\\log Y}) \\times \\frac{1}{n}\\sum_i e^{\\hat{\\varepsilon}_i}$$\n\n"
+     "**이 데이터에서 실제로 일어나는 일** — 보정은 train에서 편의를 -0.86달러에서 -0.07달러로 거의 없애고 "
+     "RMSE도 개선합니다(이론대로). 그런데 test에서는 **RMSE가 오히려 나빠집니다**. "
+     "이 7:3 분할에서 test의 평균 임금이 train보다 0.84달러 낮아, 보정하지 않은 예측이 우연히 맞아떨어졌기 때문입니다.\n\n"
+     "즉 보정이 틀린 게 아니라 **분할 한 번의 성능으로 판단하면 안 된다**는 뜻입니다 — 14단계에서 "
+     "교차검증을 함께 보는 이유입니다. 아래 표는 train·test의 편의와 RMSE를 모두 실어 그 차이를 보여 줍니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 데이터 분석 ▸ **다항회귀** / **log 모형·Duan 스미어링**",
+     "다항 차수 1·2·3 + 로그 모형",
+     "from sklearn.preprocessing import PolynomialFeatures\n"
+     "from sklearn.linear_model import RidgeCV\n" + WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+
+rows = []
+for deg in (1, 2, 3):
+    pf = PolynomialFeatures(degree=deg, include_bias=False)
+    Ztr = np.hstack([pf.fit_transform(X_tr[NUM]), X_tr.drop(columns=NUM).to_numpy(float)])
+    Zte = np.hstack([pf.transform(X_te[NUM]), X_te.drop(columns=NUM).to_numpy(float)])
+    s2 = StandardScaler().fit(Ztr)
+    m = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(s2.transform(Ztr), y_tr)
+    p_tr, p_te = m.predict(s2.transform(Ztr)), m.predict(s2.transform(Zte))
+    rows.append({"모형": f"Polynomial({deg})", "특성수": Ztr.shape[1],
+                 "R2_train": r2_score(y_tr, p_tr), "R2_test": r2_score(y_te, p_te),
+                 "RMSE_test": mean_squared_error(y_te, p_te) ** 0.5, "비고": ""})
+
+# 로그 모형 — Duan 스미어링으로 원척도 복원
+ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, np.log(y_tr))
+smear = float(np.exp(np.log(y_tr) - ml.predict(A)).mean())
+raw_tr, raw_te = np.exp(ml.predict(A)), np.exp(ml.predict(B))
+for label, ptr, pte in [("Log(Ridge) 미보정", raw_tr, raw_te),
+                        ("Log(Ridge) 보정", raw_tr * smear, raw_te * smear)]:
+    rows.append({"모형": label, "특성수": X.shape[1],
+                 "R2_train": r2_score(y_tr, ptr), "R2_test": r2_score(y_te, pte),
+                 "RMSE_test": mean_squared_error(y_te, pte) ** 0.5,
+                 "비고": "exp()만 사용" if "미보정" in label else f"smearing {smear:.4f}"})
+
+# 편의(bias) = 예측 평균 − 실제 평균. 스미어링이 고치는 것은 RMSE가 아니라 이 값이다.
+bias = pd.DataFrame({
+    "구분": ["train 미보정", "train 보정", "test 미보정", "test 보정"],
+    "예측평균": [raw_tr.mean(), (raw_tr * smear).mean(), raw_te.mean(), (raw_te * smear).mean()],
+    "실제평균": [y_tr.mean(), y_tr.mean(), y_te.mean(), y_te.mean()],
+    "RMSE": [mean_squared_error(y_tr, raw_tr) ** 0.5,
+             mean_squared_error(y_tr, raw_tr * smear) ** 0.5,
+             mean_squared_error(y_te, raw_te) ** 0.5,
+             mean_squared_error(y_te, raw_te * smear) ** 0.5],
+})
+bias["편의"] = bias["예측평균"] - bias["실제평균"]
+print(f"로그척도 R2 test = {r2_score(np.log(y_te), ml.predict(B)):.4f} "
+      f"(원척도로 되돌리면 값이 달라진다 — 비교는 반드시 같은 척도에서)")
+print(f"스미어링 {smear:.4f}배 — train 편의 {bias.loc[0, '편의']:+.4f} -> {bias.loc[1, '편의']:+.4f}"
+      f"  RMSE {bias.loc[0, 'RMSE']:.4f} -> {bias.loc[1, 'RMSE']:.4f}  (이론대로 둘 다 개선)")
+print(f"그런데 test 편의 {bias.loc[2, '편의']:+.4f} -> {bias.loc[3, '편의']:+.4f}"
+      f"  RMSE {bias.loc[2, 'RMSE']:.4f} -> {bias.loc[3, 'RMSE']:.4f}  (RMSE는 나빠진다)")
+print(f"   원인: test 평균 임금 {y_te.mean():.3f} < train 평균 {y_tr.mean():.3f} — "
+      f"보정하지 않은 예측이 이 분할에서 우연히 맞았다. 14단계 교차검증으로 확인한다.")
+print(bias[["구분", "예측평균", "실제평균", "편의", "RMSE"]].round(4).to_string(index=False))
+
+out = pd.DataFrame(rows)
+out["과적합폭"] = out["R2_train"] - out["R2_test"]
+out.round(4)''',
+     "values"),
+
+    # ── ⑤ 모델 평가 ───────────────────────────────────────────────────
+    (234,
+     "14단계 — 모델 비교표와 교차검증 〔모델 평가〕",
+     "## 14단계 — 모델 비교표·교차검증 〔모델 평가〕\n\n"
+     "같은 분할·같은 지표로 5종을 한 표에 놓습니다. 회귀는 **R²는 높게, RMSE는 낮게**가 좋습니다.\n\n"
+     "여기에 더해 **5겹 교차검증**을 돌립니다. 분할 한 번의 성능은 운이 섞여 있어서, "
+     "R²의 **표준편차**가 크면 '데이터를 어떻게 나누느냐에 성능이 휘둘린다'는 뜻입니다.\n\n"
+     "교차검증 안에서도 표준화는 겹마다 train에서만 `fit`되어야 하므로 `make_pipeline`으로 묶습니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 모델 평가 ▸ **모델 비교표** / **교차검증**",
+     "5종 비교 + 5겹 교차검증 R²",
+     "from sklearn.linear_model import RidgeCV, LassoCV, ElasticNetCV\n"
+     "from sklearn.preprocessing import PolynomialFeatures\n"
+     "from sklearn.model_selection import KFold, cross_val_score\n"
+     "from sklearn.pipeline import make_pipeline\n" + WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+kf = KFold(n_splits=5, shuffle=True, random_state=1234)
+
+def mk(est):
+    return make_pipeline(StandardScaler(), est)
+
+rows = []
+ests = {
+    "Ridge": lambda: RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5),
+    "Lasso": lambda: LassoCV(alphas=np.logspace(-3, 1, 60), cv=5, max_iter=50000, random_state=0),
+    "ElasticNet": lambda: ElasticNetCV(l1_ratio=[0.3, 0.5, 0.7, 0.9, 1.0],
+                                       alphas=np.logspace(-3, 1, 30), cv=5,
+                                       max_iter=50000, random_state=0),
+}
+for name, make in ests.items():
+    m = make().fit(A, y_tr)
+    cvs = cross_val_score(mk(make()), X, y, cv=kf, scoring="r2")
+    rows.append({"model": name,
+                 "R2_train": r2_score(y_tr, m.predict(A)), "R2_test": r2_score(y_te, m.predict(B)),
+                 "RMSE_train": mean_squared_error(y_tr, m.predict(A)) ** 0.5,
+                 "RMSE_test": mean_squared_error(y_te, m.predict(B)) ** 0.5,
+                 "CV_R2평균": cvs.mean(), "CV_R2표준편차": cvs.std(),
+                 "비고": f"변수 {int((m.coef_ != 0).sum())}/{X.shape[1]}"})
+
+pf = PolynomialFeatures(degree=2, include_bias=False)
+Ztr = np.hstack([pf.fit_transform(X_tr[NUM]), X_tr.drop(columns=NUM).to_numpy(float)])
+Zte = np.hstack([pf.transform(X_te[NUM]), X_te.drop(columns=NUM).to_numpy(float)])
+Zall = np.hstack([pf.transform(X[NUM]), X.drop(columns=NUM).to_numpy(float)])
+s2 = StandardScaler().fit(Ztr)
+mp = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(s2.transform(Ztr), y_tr)
+cvs = cross_val_score(mk(RidgeCV(alphas=np.logspace(-2, 3, 40))), Zall, y, cv=kf, scoring="r2")
+rows.append({"model": "Polynomial(2)",
+             "R2_train": r2_score(y_tr, mp.predict(s2.transform(Ztr))),
+             "R2_test": r2_score(y_te, mp.predict(s2.transform(Zte))),
+             "RMSE_train": mean_squared_error(y_tr, mp.predict(s2.transform(Ztr))) ** 0.5,
+             "RMSE_test": mean_squared_error(y_te, mp.predict(s2.transform(Zte))) ** 0.5,
+             "CV_R2평균": cvs.mean(), "CV_R2표준편차": cvs.std(),
+             "비고": f"특성 {Ztr.shape[1]}"})
+
+ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, np.log(y_tr))
+smear = float(np.exp(np.log(y_tr) - ml.predict(A)).mean())
+lp_tr, lp_te = np.exp(ml.predict(A)) * smear, np.exp(ml.predict(B)) * smear
+rows.append({"model": "Log(Ridge)",
+             "R2_train": r2_score(y_tr, lp_tr), "R2_test": r2_score(y_te, lp_te),
+             "RMSE_train": mean_squared_error(y_tr, lp_tr) ** 0.5,
+             "RMSE_test": mean_squared_error(y_te, lp_te) ** 0.5,
+             "CV_R2평균": np.nan, "CV_R2표준편차": np.nan,
+             "비고": f"smearing {smear:.3f}"})
+
+out = pd.DataFrame(rows).sort_values("R2_test", ascending=False).reset_index(drop=True)
+out["과적합폭"] = out["R2_train"] - out["R2_test"]
+print("선택 기준: R2_test 최대 · RMSE_test 최소 · 과적합폭이 작고 CV 표준편차가 작을 것")
+out.round(4)''',
+     "values"),
+
+    (252,
+     "15단계 — 잔차 진단 〔모델 평가〕",
+     "## 15단계 — 잔차 진단 〔모델 평가〕\n\n"
+     "R²만 보고 끝내면 **어디서 틀리는지**를 놓칩니다. 잔차를 세 장으로 봅니다.\n\n"
+     "1. **잔차 vs 적합값** — 0 주변에 고르게 퍼져야 합니다. 오른쪽으로 갈수록 퍼짐이 커지면 **이분산**입니다.\n"
+     "2. **정규 QQ** — 점이 직선에서 벗어나면 잔차가 정규가 아닙니다(오른쪽 위가 튀면 고임금 과소예측).\n"
+     "3. **잔차 분포** — 치우침이 남아 있는지.\n\n"
+     "**Breusch-Pagan 검정**의 p가 0.05보다 작으면 등분산 가정이 깨진 것이고, "
+     "로그 모형이나 가중회귀를 검토할 근거가 됩니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 모델 평가 ▸ **잔차 진단**",
+     "잔차 3종 진단 — 원척도 vs 로그 모형",
+     "import matplotlib.pyplot as plt\n"
+     "import statsmodels.api as sm\n"
+     "from statsmodels.stats.diagnostic import het_breuschpagan\n"
+     "from scipy import stats\n"
+     "from sklearn.linear_model import RidgeCV\n" + WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+
+m0 = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, y_tr)
+r0 = y_tr.to_numpy() - m0.predict(A)
+ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, np.log(y_tr))
+r1 = np.log(y_tr).to_numpy() - ml.predict(A)
+
+for label, resid, fitv in [("원척도", r0, m0.predict(A)), ("로그척도", r1, ml.predict(A))]:
+    p = het_breuschpagan(resid, sm.add_constant(A))[1]
+    print(f"{label}  Breusch-Pagan p = {p:.3e}  왜도 {stats.skew(resid):+.3f}  "
+          f"{'이분산' if p < 0.05 else '등분산 유지'}")
+
+fig, ax = plt.subplots(1, 3, figsize=(11, 3.3))
+ax[0].scatter(m0.predict(A), r0, s=9, alpha=0.45, color="#4A90C2")
+ax[0].axhline(0, color="#C2504A", lw=1)
+ax[0].set_xlabel("적합값"); ax[0].set_ylabel("잔차"); ax[0].set_title("잔차 vs 적합값 (원척도)")
+stats.probplot(r0, dist="norm", plot=ax[1])
+ax[1].set_title("정규 QQ (원척도)")
+ax[2].hist(r0, bins=30, color="#4A90C2", alpha=0.65, label="원척도", edgecolor="white", linewidth=0.3)
+ax[2].hist(r1 * r0.std() / r1.std(), bins=30, color="#D9A441", alpha=0.55,
+           label="로그척도(척도 맞춤)", edgecolor="white", linewidth=0.3)
+ax[2].legend(fontsize=8); ax[2].set_title("잔차 분포")
+fig.tight_layout()
+fig''',
+     "object"),
+
+    (260,
+     "16단계 — 계수 해석과 임금 밴드 〔모델 평가〕",
+     "## 16단계 — 계수 해석·임금 밴드 〔모델 평가〕\n\n"
+     "마지막은 **무엇을 얻었는가**입니다.\n\n"
+     "로그 모형의 표준화 계수는 **%로 바로 읽힙니다** — `계수 × 100` = '그 변수가 1표준편차 늘 때 임금 몇 %'. "
+     "설계서의 시나리오(신규 채용 급여 Band 수립)에 그대로 쓸 수 있는 형태입니다.\n\n"
+     "예측값을 3분위로 잘라 **하위·중위·상위 밴드**를 만들고, 각 밴드의 예측평균과 실적평균이 얼마나 벌어지는지 봅니다. "
+     "잔차 표준편차로 만든 근사 95% 구간의 적중률이 95% 근처면 구간 추정이 쓸 만하다는 뜻입니다.\n\n"
+     "> 코드 삽입 ▸ 통계분석 ▸ 모델 평가 ▸ **계수 해석** / **예측 밴드**",
+     "표준화 계수(%) · 3분위 임금 밴드",
+     "from sklearn.linear_model import RidgeCV\n" + WAGE_MIMP + "\n" + WAGE_REF + '''
+''' + WAGE_CONST + '''
+
+''' + WAGE_PREP + '''
+
+ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, np.log(y_tr))
+smear = float(np.exp(np.log(y_tr) - ml.predict(A)).mean())
+pred = np.exp(ml.predict(B)) * smear
+sd = float(np.std(np.log(y_tr).to_numpy() - ml.predict(A), ddof=1))
+
+coef = pd.DataFrame({"변수": X.columns, "계수": ml.coef_, "1표준편차당 %": ml.coef_ * 100})
+coef = coef.reindex(coef["계수"].abs().sort_values(ascending=False).index)
+print("상위 5개 —", coef.head(5)[["변수", "1표준편차당 %"]].round(2).to_dict("records"))
+
+band = pd.DataFrame({"실적": y_te.to_numpy(), "예측": pred})
+band["밴드"] = pd.qcut(band["예측"], q=3, labels=["하위", "중위", "상위"])
+band["하한"] = np.exp(np.log(pred) - 1.96 * sd)
+band["상한"] = np.exp(np.log(pred) + 1.96 * sd)
+hit = float(((band["실적"] >= band["하한"]) & (band["실적"] <= band["상한"])).mean())
+print(f"95% 예측구간 적중률 {hit:.1%} (목표 ≈ 95%)")
+
+g = band.groupby("밴드", observed=True).agg(
+    건수=("실적", "size"), 예측평균=("예측", "mean"), 실적평균=("실적", "mean"),
+    밴드하한=("하한", "mean"), 밴드상한=("상한", "mean"))
+g["괴리%"] = (g["예측평균"] / g["실적평균"] - 1) * 100
+g.reset_index().round(3)''',
+     "values"),
+]
+
+WAGE_INTRO = (
+    "임금 회귀 예측 — 통계분석 5단계",
+    "# 임금 회귀 예측 — 통계분석 5단계\n\n"
+    "시간당 임금(`WAGE`)을 근로자 특성 10개로 예측하는 회귀 모델을 **한 단계씩** 만들어 갑니다. "
+    "데이터는 `wage` 시트(534행 × 11열), 코드북은 `meta` 시트에 들어 있습니다 — 외부 파일 없이 "
+    "**전체 실행**만 누르면 끝까지 돌아갑니다.\n\n"
+    "## 단계 구성 — 예제 코드 카테고리와 같은 순서\n\n"
+    "| 카테고리 | 단계 | 하는 일 |\n|---|---|---|\n"
+    "| **통계분석** | 1~4 | 데이터 품질 · 타깃 분포 · 상관구조 · 집단 비교 |\n"
+    "| **전처리 과정** | 5~7 | 코드북으로 열 구분 · 결측/이상치 · 인코딩·분할·표준화 |\n"
+    "| **특성공학** | 8~10 | 구간화 · η² 변수 선별 · 파생변수와 다항 특성 |\n"
+    "| **데이터 분석** | 11~13 | OLS 기준선·VIF · Ridge/Lasso/ElasticNet · 다항·로그 모형 |\n"
+    "| **모델 평가** | 14~16 | 비교표·교차검증 · 잔차 진단 · 계수 해석과 임금 밴드 |\n\n"
+    "각 단계의 코드는 **코드 삽입** 팝업의 `통계분석` 카테고리에 같은 이름으로 들어 있습니다. "
+    "다른 표로 작업할 때는 거기서 조각을 꺼내 쓰고, 맨 윗줄의 `TARGET`·`CAT`·`NUM`만 바꾸면 됩니다.\n\n"
+    "## 모델 범위\n\n"
+    "**선형회귀** Ridge · Lasso · ElasticNet, **비선형회귀** polynomial · log 모형까지만 다룹니다. "
+    "계수를 직접 읽어 해석하는 흐름에 집중하기 위해 트리 계열과 베이지안 최적화는 넣지 않았습니다.\n\n"
+    "## 데이터\n\n"
+    "1985년 미국 인구현황조사(CPS)의 임금 표본입니다. `EDUCATION`(교육년차)·`EXPERIENCE`(경력)·`AGE`(나이)가 "
+    "수치형이고, 나머지 7개(`SOUTH`·`SEX`·`UNION`·`RACE`·`OCCUPATION`·`SECTOR`·`MARR`)는 **코드로 저장된 범주형**입니다. "
+    "`meta` 시트가 코드의 뜻을 담고 있습니다.\n\n"
+    "> ⚠ 첫 실행 때 `scikit-learn`·`statsmodels`를 내려받느라 1단계가 조금 느립니다(이후 캐시).",
+)
+
+
+def build_wage_regression():
+    """부록 N — 임금 회귀 예측(통계분석 카테고리). public/samples/wage.xlsx를 시트로 내장."""
+    src = XLSX_DIR / "wage.xlsx"
+    if not src.exists():
+        print(f"!! wage.xlsx 없음 — 임금 회귀 예제 건너뜀: {src}")
+        return None
+    wage_tbl = read_xlsx("wage", 0)
+    meta_tbl = read_xlsx("wage", 1)
+    assert len(wage_tbl) == 535 and len(wage_tbl[0]) == 11, (len(wage_tbl), len(wage_tbl[0]))
+
+    sid = "sh-wage"
+    sheets = [
+        data_sheet(sid, "wage", wage_tbl, row_count=600, col_count=30),
+        data_sheet("sh-wage-meta", "meta", meta_tbl, row_count=40, col_count=12),
+    ]
+    blocks = steps(sid, 13, "wr", WAGE_INTRO, WAGE_STEPS)
+    return workbook("wb-wage-regression", "임금 회귀 예측 — 통계분석 5단계", sheets, blocks)
+
+
 def main():
     SAMPLES.mkdir(parents=True, exist_ok=True)
     selfcheck_xlsx()
@@ -6441,6 +7125,8 @@ def main():
         (build_ci_whole_life(), "ci-whole-life.pygrid.json"),
         # 부록 M.6 — 암 진단 후 생활비(연금) 현가
         (build_cancer_annuity(), "cancer-annuity.pygrid.json"),
+        # 부록 N — 임금 회귀 예측(통계분석 카테고리, 원본 노트북 Chapter 03)
+        (build_wage_regression(), "wage-regression.pygrid.json"),
     ]:
         if wb is None:
             continue

@@ -2,7 +2,7 @@
 
 // 파일 메뉴 — 새 워크북·열기·저장·내보내기·샘플·최근 워크북 (§1.5, §4.4 FileMenu)
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import chainLadderSample from "@/data/sample-workbooks/chain-ladder.pygrid.json";
@@ -61,9 +61,18 @@ interface SampleWorkbook {
 const dyn = (m: Promise<{ default: unknown }>): Promise<Workbook> =>
   m.then((r) => r.default as Workbook);
 
-/** 부록 K — 계리 예제 데이터 내장 워크북 5종 (데이터 + 단계별 코드가 한 파일) */
-const SAMPLE_ACTUARIAL: SampleWorkbook[] = [
-  { label: "위험률·생명표", load: async () => SAMPLE_LIFE_TABLE },
+/**
+ * 예제 워크북 상위 카테고리 (부록 N).
+ *  · 통계분석 — 표본에서 모형을 고르는 절차(회귀·GLM·빈도심도·생존분석)
+ *  · 위험률 산출 — 확정된 위험률에서 기수·급부 현가·보험료로 내려가는 계리 절차
+ * 두 갈래는 절차가 달라 한 목록에 섞지 않는다. 코드 삽입 팝업의 카테고리와 같은 구분이다.
+ */
+const SAMPLE_STAT: SampleWorkbook[] = [
+  {
+    // 부록 N — 통계분석 → 전처리 → 특성공학 → Ridge/Lasso/ElasticNet·다항·로그 → 평가
+    label: "임금 회귀 예측 (5단계)",
+    load: () => dyn(import("@/data/sample-workbooks/wage-regression.pygrid.json")),
+  },
   {
     label: "보험료 요인 분석 (GLM)",
     load: () => dyn(import("@/data/sample-workbooks/premium-glm.pygrid.json")),
@@ -76,54 +85,79 @@ const SAMPLE_ACTUARIAL: SampleWorkbook[] = [
     label: "생존분석·유지율",
     load: () => dyn(import("@/data/sample-workbooks/survival-retention.pygrid.json")),
   },
+];
+
+/** 위험률 산출 — 하위 카테고리(위험률·생명표 / 보험료 / 다급부 / 준비금) 순서로 묶는다 */
+const SAMPLE_RISK: { group: string; items: SampleWorkbook[] }[] = [
   {
-    label: "지급준비금 (체인래더)",
-    load: async () => chainLadderSample as unknown as Workbook,
+    group: "위험률·생명표",
+    items: [
+      { label: "위험률·생명표", load: async () => SAMPLE_LIFE_TABLE },
+      {
+        // 부록 M.4 — 발생자수÷추계인구 → 조율 → 비만동반·안전할증 → 보간·평활 → 원본 대조
+        label: "위험률 산출 (원시통계)",
+        load: () => dyn(import("@/data/sample-workbooks/risk-rate.pygrid.json")),
+      },
+    ],
   },
   {
-    // 부록 M — 계산기수 → 보험료 → 준비금·환급금 → 표준/적용 비교
-    label: "보험료 산출 (정기보험)",
-    load: () => dyn(import("@/data/sample-workbooks/premium-term.pygrid.json")),
+    group: "보험료 산출",
+    items: [
+      {
+        // 부록 M — 계산기수 → 보험료 → 준비금·환급금 → 표준/적용 비교
+        label: "정기보험 (계산기수)",
+        load: () => dyn(import("@/data/sample-workbooks/premium-term.pygrid.json")),
+      },
+      {
+        // 부록 M.5 — 체증형(Rx 기수) · 미달체(사망률 ×3) → 3종 비교 → 원본 P·미달P 대조
+        label: "정기보험 변형 (체증형·미달체)",
+        load: () => dyn(import("@/data/sample-workbooks/term-variants.pygrid.json")),
+      },
+      {
+        // 부록 M.5 — 직종축 위험률 → 경과 기수표 → 순수보장형·만기환급형(50%) → PV테이블 대조
+        label: "상해공제 (직종축)",
+        load: () => dyn(import("@/data/sample-workbooks/accident-class.pygrid.json")),
+      },
+    ],
   },
   {
-    // 부록 M.4 — 다중탈퇴 생존자표 → Cx·Mx(90일 면책) → 급부배율 → 공제료
-    label: "암보험 (다중탈퇴)",
-    load: () => dyn(import("@/data/sample-workbooks/cancer-multi.pygrid.json")),
+    group: "다중탈퇴·다급부",
+    items: [
+      {
+        // 부록 M.4 — 다중탈퇴 생존자표 → Cx·Mx(90일 면책) → 급부배율 → 공제료
+        label: "암보험 (다중탈퇴)",
+        load: () => dyn(import("@/data/sample-workbooks/cancer-multi.pygrid.json")),
+      },
+      {
+        // 부록 M.6 — 주요암 qc → 암발생후사망률 2차원표 → 진단 후 생활비 연금현가 → 급부 A~F
+        label: "암보험 (진단 후 생활비)",
+        load: () => dyn(import("@/data/sample-workbooks/cancer-annuity.pygrid.json")),
+      },
+      {
+        // 부록 M.5 — 이중탈퇴 lx·lx′ → 급부 5종 기수 차분 → 급부배율 SUMX → 순·영업공제료
+        label: "종신공제 (다급부)",
+        load: () => dyn(import("@/data/sample-workbooks/whole-life-multi.pygrid.json")),
+      },
+      {
+        // 부록 M.6 — CI 11종 경합 제거 결합 → 3중탈퇴 생존자표 → CI 선지급 급부 현가 → 보험료
+        label: "CI종신 (3중탈퇴)",
+        load: () => dyn(import("@/data/sample-workbooks/ci-whole-life.pygrid.json")),
+      },
+    ],
   },
   {
-    // 부록 M.4 — 발생자수÷추계인구 → 조율 → 비만동반·안전할증 → 보간·평활 → 원본 대조
-    label: "위험률 산출 (원시통계)",
-    load: () => dyn(import("@/data/sample-workbooks/risk-rate.pygrid.json")),
-  },
-  {
-    // 부록 M.4 — CDR 발생률 → 이중탈퇴 생존자 → 현금흐름 PV → 환급률 → P테이블 대조
-    label: "무해지환급형 (해지율 PV)",
-    load: () => dyn(import("@/data/sample-workbooks/nonsurrender.pygrid.json")),
-  },
-  {
-    // 부록 M.5 — 이중탈퇴 lx·lx′ → 급부 5종 기수 차분 → 급부배율 SUMX → 순·영업공제료
-    label: "종신공제 (다급부)",
-    load: () => dyn(import("@/data/sample-workbooks/whole-life-multi.pygrid.json")),
-  },
-  {
-    // 부록 M.5 — 체증형(Rx 기수) · 미달체(사망률 ×3) → 3종 비교 → 원본 P·미달P 대조
-    label: "정기보험 변형 (체증형·미달체)",
-    load: () => dyn(import("@/data/sample-workbooks/term-variants.pygrid.json")),
-  },
-  {
-    // 부록 M.5 — 직종축 위험률 → 경과 기수표 → 순수보장형·만기환급형(50%) → PV테이블 대조
-    label: "상해공제 (직종축)",
-    load: () => dyn(import("@/data/sample-workbooks/accident-class.pygrid.json")),
-  },
-  {
-    // 부록 M.6 — CI 11종 경합 제거 결합 → 3중탈퇴 생존자표 → CI 선지급 급부 현가 → 보험료
-    label: "CI종신 (3중탈퇴)",
-    load: () => dyn(import("@/data/sample-workbooks/ci-whole-life.pygrid.json")),
-  },
-  {
-    // 부록 M.6 — 주요암 qc → 암발생후사망률 2차원표 → 진단 후 생활비 연금현가 → 급부 A~F
-    label: "암보험 (진단 후 생활비)",
-    load: () => dyn(import("@/data/sample-workbooks/cancer-annuity.pygrid.json")),
+    group: "준비금·환급금",
+    items: [
+      {
+        // 부록 M.4 — CDR 발생률 → 이중탈퇴 생존자 → 현금흐름 PV → 환급률 → P테이블 대조
+        label: "무해지환급형 (해지율 PV)",
+        load: () => dyn(import("@/data/sample-workbooks/nonsurrender.pygrid.json")),
+      },
+      {
+        label: "지급준비금 (체인래더)",
+        load: async () => chainLadderSample as unknown as Workbook,
+      },
+    ],
   },
 ];
 
@@ -180,6 +214,7 @@ const SAMPLE_DATASETS = [
   { file: "experience.xlsx", label: "experience.xlsx — 경험데이터 (800행)" },
   { file: "triangle.xlsx", label: "triangle.xlsx — 런오프 누적 삼각형" },
   { file: "mortality_table.xlsx", label: "mortality_table.xlsx — 생명표 qx (0~100세)" },
+  { file: "wage.xlsx", label: "wage.xlsx — 임금·근로자 특성 (534행)" },
 ];
 
 const DEFAULT_IMPORT_OPTS: ImportOptions = { toSheet: true, toFs: true, makeBlock: "xl" };
@@ -201,14 +236,34 @@ export function SampleWorkbookMenu() {
           샘플 워크북
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          계리 예제 — 데이터 + 코드 한 파일
+      <DropdownMenuContent align="start" className="max-h-[70vh] w-64 overflow-y-auto">
+        <DropdownMenuLabel className="text-xs text-primary">
+          통계분석 — 데이터 + 단계별 코드
         </DropdownMenuLabel>
-        {SAMPLE_ACTUARIAL.map((s) => (
+        {SAMPLE_STAT.map((s) => (
           <DropdownMenuItem key={s.label} onClick={() => void openSampleWorkbook(s)}>
             {s.label}
           </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs text-primary">
+          위험률 산출 — 데이터 + 단계별 코드
+        </DropdownMenuLabel>
+        {SAMPLE_RISK.map(({ group, items }) => (
+          <Fragment key={group}>
+            <DropdownMenuLabel className="pl-3 text-[11px] font-normal text-muted-foreground">
+              {group}
+            </DropdownMenuLabel>
+            {items.map((s) => (
+              <DropdownMenuItem
+                key={s.label}
+                className="pl-4"
+                onClick={() => void openSampleWorkbook(s)}
+              >
+                {s.label}
+              </DropdownMenuItem>
+            ))}
+          </Fragment>
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground">기본 예제</DropdownMenuLabel>

@@ -71,8 +71,19 @@ python .claude/skills/sample-workbook-gen/scripts/build_samples.py
   그래서 검산이 아니라 **자체 정합성 검증**을 쓴다 — 단 `kL′ = (1−rx)×kLx`만은 원본 xls에 결과 열이
   따로 있어 실제 대조가 가능하다(최대차 4.9e-07 = 원본 6자리 반올림 수준).
   스킵 조건은 `premium-term`·`cancer-multi` JSON이 없을 때뿐이라 **`main()`에서 그 둘보다 뒤에 와야 한다.**
+- `wage-regression.pygrid.json` — 임금 회귀 예측(부록 N, **통계분석 카테고리**): 데이터 품질 → 타깃 분포·로그 변환
+  → 상관·다중공선성(AGE = EDUCATION + EXPERIENCE + {2,6}) → 범주형 ANOVA → 코드북 기준 열 구분
+  → IQR 이상치 → **원-핫(10열 → 16열)·7:3 분할·train 전용 표준화** → 분위수 구간화 → **상관비 eta^2**(회귀판 IV)
+  → 파생변수·PolynomialFeatures → OLS·VIF → **Ridge·Lasso·ElasticNet 계수 비교** → **다항(차수 1·2·3)·로그 모형
+  + Duan 스미어링** → 모델 비교표·5겹 교차검증 → 잔차 진단(Breusch-Pagan) → 계수 해석·임금 밴드. 16단계.
+  원본 데이터는 `public/samples/wage.xlsx`(CPS 1985 임금 534행 + `meta` 코드북 시트) — **리포에 있어 항상 생성된다.**
+  `read_xlsx(name, sheet)`로 두 시트를 모두 읽으므로 시트 인자를 지우면 안 된다.
+  원본 노트북(패스트캠퍼스 Ch03)과 다르게 한 곳은 부록 N.5 표에 있다 — 특히 **코드 범주형을 숫자로 쓰지 않는다**.
+  13단계는 스미어링 보정이 train에서는 편의·RMSE를 함께 줄이지만 **이 분할의 test에서는 RMSE를 악화**시키는
+  실측값을 그대로 싣는다(부록 N.6). 테스트가 이 관계를 고정하므로 숫자를 바꾸려면 테스트도 같이 고친다.
 - `loss-ratio.pygrid.json` · `claim-severity.pygrid.json` — 소형 기본 예제(부록 H.2).
 - `data/snippets.json` — 초보자용 스니펫(기술통계·그룹 집계·피벗·히스토그램·선형회귀·생명표 lx 계산).
+  코드 삽입 팝업의 **예제 코드 카테고리**는 이 스크립트가 아니라 `lib/reference/exampleSnippets.ts`가 갖는다(부록 N).
 
 ## 규칙
 
@@ -82,3 +93,5 @@ python .claude/skills/sample-workbook-gen/scripts/build_samples.py
 - 사용 라이브러리는 Pyodide 가용 범위(numpy·pandas·scipy·statsmodels·matplotlib)로 한정 — lifelines 등은 자체 구현.
 - 워크북 하나당 2MB 이하. 데이터 셀에는 서식(`f`)을 붙이지 않는다.
 - 생성 후 검증: `npm test -- tests/unit/sample-workbooks.test.ts` + `npm run test:e2e -- tests/e2e/sample-workbooks.spec.ts`.
+- 임금 회귀 예제는 `npx vitest run -c vitest.pyodide.config.ts tests/pyodide/wage-regression.test.ts`로
+  16단계를 실제 시트 데이터에 돌려 본다(블록 하나하나가 혼자서도 도는지까지 확인한다).

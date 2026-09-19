@@ -43,6 +43,21 @@
 
 `app/globals.css`의 §4.2 토큰이 마스터. Sky Blue `#4A90C2`는 "Python이 관여한 곳"(실행·선택·spill·활성 탭)에만. 폰트: Pretendard(UI)·JetBrains Mono(코드·셀 주소)·Fraunces(로고·제목). 라이트 전용.
 
+## 6.5 예제 코드 카테고리 (부록 N)
+
+예제는 **상위 카테고리 2종**으로 갈라 둔다 — 섞지 않는다.
+
+| 상위 | 하위 | 정본 |
+|---|---|---|
+| **통계분석** | 통계분석 · 전처리 과정 · 특성공학 · 데이터 분석(회귀 모델) · 모델 평가 | `lib/reference/exampleSnippets.ts` |
+| **위험률 산출** | 위험률 산출(조율·평활) · 생명표·계산기수 · 다중탈퇴·다급부 · 보험료·준비금 | 같은 파일 |
+
+- 회귀 모델 범위는 **Ridge·Lasso·ElasticNet + polynomial·log**로 고정. 트리 계열·베이지안 최적화 금지(단위 테스트가 막는다).
+- 조각 코드 규칙은 `wrangleSnippets`와 동일 — 마지막 줄은 `print`가 아니라 **값(식)**.
+- 자리표시자 `{{range}}`는 **`xl(...)` 호출 전체**로 치환된다 → `df = {{range}}`로 쓰고 따옴표 안에 넣지 않는다.
+- 코드 삽입 팝업(`SnippetInsertDialog`)과 샘플 워크북 메뉴(`FileMenu`)가 같은 2단 구분을 쓴다.
+- 조각을 고치면 `tests/pyodide/example-snippets.test.ts`가 **전부 실제로 실행**해 확인한다.
+
 ## 7. 서브에이전트
 
 - `py-runtime`(.claude/agents/py-runtime/AGENT.md): workers/, lib/runtime/*. 산출물 `/output/runtime-protocol.md`, `/output/conversion-report.json`
