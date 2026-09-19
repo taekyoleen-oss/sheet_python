@@ -1074,8 +1074,51 @@ M.4와 같은 규칙(실데이터 내장·단계별 [설명+코드]·원본 대�
 |---|---|
 | `tests/unit/example-snippets.test.ts` | 카테고리 구성·id 유일성·마지막 줄 규칙·자리표시자 규약·모델 범위 (164) |
 | `tests/pyodide/example-snippets.test.ts` | 조각 **40개 전부**를 Node Pyodide에서 실행 — 오류 없음 + 마지막 식의 값 존재 |
+| `tests/pyodide/stat-portability.test.ts` | 통계분석 조각 27개 × **다른 표 4종** — 머리말만 갈아 끼워 전부 실행 (N.8) |
 | `tests/pyodide/wage-regression.test.ts` | 워크북 **16단계 전부**를 실제 시트 데이터로 실행(블록마다 전역 새로 만들어 자립성까지) + 산출값 검증 |
 | `tests/e2e/example-snippets.spec.ts` | 브라우저에서 5개 카테고리 조각을 차례로 삽입 → 전체 실행 → stdout·spill 확인 |
 | `tests/e2e/sample-workbooks.spec.ts` | 샘플 메뉴에서 열고 전체 실행 → 16블록 `ok` + 설계행렬 16열·η² 10행·모델 5종 |
 
 `scikit-learn`은 Pyodide 배포판에 포함되어 있다(1.8.0, 314.0.6 기준). 첫 실행 때만 CDN에서 받고 이후 캐시된다.
+
+### N.8 다른 표에서도 같은 5단계가 되는가 (이식성 검증, 2026-09-19)
+
+"머리말 네 줄만 바꾸면 된다"는 약속을 말로 두지 않고 **실행으로 고정**한다. `tests/pyodide/stat-portability.test.ts`가 통계분석 조각 27개를 성격이 다른 표 4개에 대해 전부 돌린다 — 바꾸는 것은 `STAT_HEAD`(`df`·`TARGET`·`CAT`·`NUM`)뿐이고 본문은 한 글자도 건드리지 않는다.
+
+| 표 | 크기 | 특징 | 목적 |
+|---|---|---|---|
+| `wage` | 534 × 11 | 범주형이 전부 숫자 코드, 결측 없음 | 기준 |
+| `policy` | 600 × 16 | 문자열 범주형 + ID 2개 + bool + `income` 결측 75 | ID 혼입·결측·문자열 범주 |
+| `claims` | 600 × 11 | `prem_after ~ prem_before` r = 0.99, 10만 단위 | 강한 신호·자릿수 큰 타깃 |
+| `experience` | 800 × 6 | `NUM` 1개, 범주 2수준 | 최소 구성(경계) |
+
+#### 머리말만으로 되게 만든 변경
+
+| 문제 | 조치 |
+|---|---|
+| `df.drop(columns=[TARGET])`가 ID·파생 열까지 설계행렬에 넣는다 | **`df[NUM + CAT]` 화이트리스트**로 바꿈 — 목록에 없는 열은 자동으로 빠진다 |
+| 결측이 있으면 sklearn이 죽는다 | 설계행렬 단계에서 `X.fillna(X.median())` |
+| `BY = "OCCUPATION"`·`COL = "EDUCATION"` 등 하드코딩 | `BY = CAT[0]`·`COL = NUM[0]`·`COL = TARGET`으로 유도 |
+| `fe-derive`가 `EXPERIENCE`·`UNION` 등 임금 전용 열을 씀 | `NUM[0]`·`NUM[1]`·`CAT[0]`에서 제곱·교차·비율·범주상호작용을 **생성** |
+| 타깃에 0·음수가 있으면 `np.log`가 깨진다 | `clip(lower=1e-9)` |
+| Lasso·ElasticNet의 `alpha` 격자가 타깃 단위에 종속 | 격자에 `np.std(y_tr)`를 곱해 단위 무관하게 |
+| 예측값 동점이 있으면 `qcut(q=3)`이 실패 | `rank(method="first")` 후 분위 |
+
+#### 검증에서 실제로 잡힌 결함 2건
+
+1. **`fe-derive` — `NUM`이 1개일 때 터짐.** `a = NUM[0]`, `b = NUM[1] if len(NUM) > 1 else NUM[0]`이라 `df[[TARGET, a, b, g]]`에 같은 열이 두 번 들어가고, `d[a]`가 Series가 아니라 DataFrame이 되어 대입이 `ValueError`로 죽었다. `dict.fromkeys`로 중복을 제거해 고쳤다(`experience` 표가 잡아냈다).
+
+2. **로그 모형이 `claims`에서 폭발.** 로그척도 R²는 0.81로 잘 맞는데 원척도로 되돌리면 **R² = −9.70**, 예측 최대가 실제 최대의 **6.2배**였다. 원인은 오류가 아니라 **모형 형태의 미지정**이다 — `prem_after ≈ 1.06 × prem_before`는 `log y = log x + c`(로그-로그)인데 반로그(`log y = b·z(x)`)로 적합하면 큰 `x`에서 지수적으로 튄다.
+
+   그래서 `model-log` 조각이 **반로그와 로그-로그를 함께 적합해 되돌린 값으로 비교**하도록 고쳤다. 로그를 씌울 설명변수는 `(df[c] > 0).all() and df[c].skew() > 1`로 고른다. 예측 최대가 실제 최대의 2배를 넘으면 경고를 찍는다. `eval-compare`의 `Log(Ridge)`도 같은 규칙을 쓴다.
+
+#### 결과 — 표마다의 최종 비교표
+
+| 표 | 1위 모델 | R²_test | 읽는 법 |
+|---|---|---|---|
+| `wage` | Polynomial(2) | **0.2583** | 수확체감(경력²)이 잡혀 선형보다 낫다. `WIDE`가 비어 로그 모형은 반로그 그대로 |
+| `claims` | Log(Ridge) 로그-로그 | **0.9800** | 배수 관계라 로그-로그가 정확히 맞는 형태. 고치기 전 반로그는 −9.70으로 꼴찌였다 |
+| `policy` | Lasso | **−0.0072** | **선형 신호가 없다.** Lasso가 14개 변수를 전부 0으로 만들어 "절편만 남기는 게 낫다"고 답한다 |
+| `experience` | Log(Ridge) | **0.0010** | 설명변수 4개로는 유지기간이 설명되지 않는다 |
+
+`policy`·`experience`처럼 **R²_test가 0 근처·음수로 나오는 것도 정상 동작**이다. 5단계가 "이 데이터로는 모델이 안 나온다"고 말해 주는 것 역시 결과이고, 그 판정을 내려면 교차검증·과적합폭·변수 선택 결과가 함께 있어야 한다. 테스트는 이 네 표 모두에서 비교표가 5종을 모두 내고 R²가 유한하며 내림차순으로 정렬되는지까지 확인한다(109 케이스).

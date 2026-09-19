@@ -30,16 +30,29 @@ export interface SnippetFamily {
 }
 
 /** 통계분석 조각 상단 공통 머리말 — 다른 표에 쓸 때 이 3줄만 바꾼다 */
-const HEAD = `df = {{range}}                             # 그리드에서 표를 선택하면 xl("wage!A1:K535", headers=True)로 치환됩니다
-TARGET = "WAGE"                              # 예측 대상 열
-CAT = ["SOUTH", "SEX", "UNION", "RACE", "OCCUPATION", "SECTOR", "MARR"]   # 코드로 저장된 범주형`;
+/**
+ * 통계분석 조각 공통 머리말(내보냄 — 테스트가 다른 표의 머리말로 갈아 끼운다) — **다른 표로 바꿀 때 고치는 곳은 이 네 줄뿐**이다.
+ * NUM+CAT을 화이트리스트로 쓰므로 목록에 없는 열(ID·날짜·파생 등)은 자동으로 빠진다.
+ * 조각 안에서 쓰는 다른 상수(비교할 범주 BY, 구간화할 열 COL)는 CAT·NUM에서 끌어 쓴다.
+ */
+export const STAT_HEAD = `df = {{range}}                               # 그리드에서 표를 선택해 넣으면 xl(...) 호출로 치환됩니다
+TARGET = "WAGE"                              # 예측할 연속형 열
+CAT = ["SOUTH", "SEX", "UNION", "RACE", "OCCUPATION", "SECTOR", "MARR"]   # 범주형(코드·문자)
+NUM = ["EDUCATION", "EXPERIENCE", "AGE"]     # 수치형 설명변수 (여기 없는 열은 모형에서 빠진다)`;
 
-/** 표준 전처리(원-핫 → 분할 → 표준화) — 모델 조각들이 공유하는 준비 코드 */
-const PREP = `X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
-y = df[TARGET].astype(float)
+/** 설계행렬 — 원-핫 + 결측 대치. NUM+CAT 화이트리스트라 ID 열이 섞여도 안전하다 */
+const DESIGN = `X = pd.get_dummies(df[NUM + CAT], columns=CAT, drop_first=True, dtype=float)
+X = X.fillna(X.median())                     # 모델은 NaN을 받지 못한다 — 수치형은 중앙값으로
+y = df[TARGET].astype(float)`;
+
+/** 표준 전처리(설계행렬 → 7:3 분할 → train 기준 표준화) — 모델·평가 조각이 공유한다 */
+const PREP = `${DESIGN}
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=1234)
 sc = StandardScaler().fit(X_tr)              # 표준화는 train에서만 fit (정보 누수 방지)
 A, B = sc.transform(X_tr), sc.transform(X_te)`;
+
+/** 로그 모형용 — 0·음수가 섞인 타깃도 깨지지 않게 하한을 둔다 */
+const LOGY = `ly_tr, ly_te = np.log(y_tr.clip(lower=1e-9)), np.log(y_te.clip(lower=1e-9))`;
 
 // ── 상위 카테고리 ①: 통계분석 ──────────────────────────────────────────────
 
@@ -52,35 +65,37 @@ const STAT_GROUPS: WrangleSnippetGroup[] = [
         id: "stat-overview",
         label: "데이터 개요 — 형태·타입·결측·중복",
         desc: "행·열 수, 열별 dtype, 결측·중복·0 비율을 한 표로 모아 데이터의 기본 건강 상태를 봅니다.",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 
 # ① 형태와 타입 — 몇 행 몇 열인지, 열마다 어떤 형인지
 print("shape:", df.shape)
-print(df.dtypes.to_string())
 print("중복 행:", int(df.duplicated().sum()))
 
 # ② 결측·고유값·0 비율을 한 표로
-#    0 비율이 높은 열은 실제 0이 아니라 '해당 없음' 플래그일 수 있다
+#    고유값이 행 수와 같으면 ID, 0 비율이 높으면 '해당 없음' 플래그일 수 있다
 chk = pd.DataFrame({
     "dtype": df.dtypes.astype(str),
     "결측": df.isna().sum(),
     "고유값": df.nunique(),
     "0비율": (df == 0).sum() / len(df),
 })
+chk["역할"] = np.where(chk.index == TARGET, "타깃",
+                np.where(chk.index.isin(CAT), "범주형",
+                  np.where(chk.index.isin(NUM), "수치형", "제외(ID 등)")))
 chk.reset_index(names="열").round(4)`,
       },
       {
         id: "stat-describe",
         label: "기술통계 — 평균·분산에 왜도·첨도 추가",
         desc: "describe()에 왜도(치우침)·첨도(꼬리 두께)·변동계수를 더해 분포 모양까지 한눈에 봅니다.",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 
-num = df.select_dtypes("number")
+num = df[[TARGET] + NUM].apply(pd.to_numeric, errors="coerce")
 d = num.describe().T
 d["왜도"] = num.skew()          # 0이면 대칭, +면 오른쪽 꼬리가 길다(고액 소수)
 d["첨도"] = num.kurt()          # 0(정규) 대비 꼬리 두께 — 클수록 극단값이 잦다
 d["변동계수"] = d["std"] / d["mean"]   # 단위가 다른 열끼리 산포를 비교할 때
-d.round(3)`,
+d.reset_index(names="열").round(3)`,
       },
       {
         id: "stat-target",
@@ -88,14 +103,14 @@ d.round(3)`,
         desc: "예측 대상의 치우침을 왜도·Shapiro 검정으로 재고, 로그 변환이 도움이 되는지 그림으로 비교합니다.",
         code: `import matplotlib.pyplot as plt
 from scipy import stats
-${HEAD}
+${STAT_HEAD}
 
-y = df[TARGET].astype(float)
+y = df[TARGET].astype(float).dropna()
 ly = np.log(y.clip(lower=1e-9))
 
 # Shapiro-Wilk — p < 0.05면 "정규분포로 보기 어렵다"
-w0, p0 = stats.shapiro(y)
-w1, p1 = stats.shapiro(ly)
+p0 = stats.shapiro(y)[1] if len(y) <= 5000 else float("nan")
+p1 = stats.shapiro(ly)[1] if len(ly) <= 5000 else float("nan")
 print(f"원척도   왜도 {y.skew():7.3f}   Shapiro p = {p0:.3e}")
 print(f"로그척도 왜도 {ly.skew():7.3f}   Shapiro p = {p1:.3e}")
 print("→ 왜도가 0에 가까워지면 선형회귀의 잔차 정규성 가정에 유리하다")
@@ -111,11 +126,11 @@ fig`,
       {
         id: "stat-corr",
         label: "상관분석 — 상관행렬 히트맵·타깃 상관 순위",
-        desc: "수치형 열끼리의 상관계수를 색으로 보고, 타깃과의 상관이 큰 순서를 출력합니다.",
+        desc: "수치형 열끼리의 상관계수를 색으로 보고, 타깃과의 상관이 큰 순서와 고상관 쌍을 출력합니다.",
         code: `import matplotlib.pyplot as plt
-${HEAD}
+${STAT_HEAD}
 
-corr = df.select_dtypes("number").corr()
+corr = df[[TARGET] + NUM].apply(pd.to_numeric, errors="coerce").corr()
 
 fig, ax = plt.subplots(figsize=(6.4, 5.2))
 im = ax.imshow(corr, vmin=-1, vmax=1, cmap="coolwarm")
@@ -130,9 +145,9 @@ fig.tight_layout()
 # 타깃과의 상관 순위 — |r|이 클수록 단독 설명력이 크다(인과는 아님)
 print(corr[TARGET].drop(TARGET).abs().sort_values(ascending=False).round(3).to_string())
 # 설명변수끼리 |r| > 0.9면 다중공선성 경보 — 규제 회귀(Ridge)가 필요해지는 신호
-hi = [(a, b, round(corr.at[a, b], 3)) for a in corr.columns for b in corr.columns
+hi = [(a, b, round(float(corr.at[a, b]), 3)) for a in NUM for b in NUM
       if a < b and abs(corr.at[a, b]) > 0.9]
-print("설명변수 간 고상관:", hi)
+print("설명변수 간 고상관:", hi if hi else "없음")
 fig`,
       },
       {
@@ -140,21 +155,23 @@ fig`,
         label: "집단 비교 — 그룹 평균·ANOVA/t 검정",
         desc: "범주별 타깃 평균 차이가 우연인지 검정합니다(3집단 이상 ANOVA, 2집단 t검정).",
         code: `from scipy import stats
-${HEAD}
-BY = "OCCUPATION"                            # 비교할 범주 열
+${STAT_HEAD}
+BY = CAT[0]                                  # 비교할 범주 열 (다른 열을 보려면 여기만 교체)
 
 g = df.groupby(BY)[TARGET].agg(건수="size", 평균="mean", 표준편차="std", 중앙값="median")
-groups = [v.to_numpy(float) for _, v in df.groupby(BY)[TARGET] if len(v) > 1]
+groups = [v.astype(float).to_numpy() for _, v in df.groupby(BY)[TARGET] if len(v) > 1]
 
 if len(groups) > 2:
     stat, p = stats.f_oneway(*groups)         # 3집단 이상 — 일원분산분석
     name = "ANOVA F"
-else:
+elif len(groups) == 2:
     stat, p = stats.ttest_ind(*groups, equal_var=False)   # 2집단 — Welch t검정
     name = "t"
-print(f"{name} = {stat:.3f}   p = {p:.3e}")
+else:
+    stat, p, name = float("nan"), float("nan"), "검정 불가(집단 1개)"
+print(f"{BY}: {name} = {stat:.3f}   p = {p:.3e}")
 print("→ p < 0.05면 집단 간 평균 차이를 우연으로 보기 어렵다")
-g.round(3)`,
+g.reset_index().round(3)`,
       },
     ],
   },
@@ -167,31 +184,34 @@ const PREP_GROUPS: WrangleSnippetGroup[] = [
     snippets: [
       {
         id: "prep-types",
-        label: "수치형·범주형 구분 — 코드북으로 바로잡기",
-        desc: "dtype만 보면 1·2·3 코드로 저장된 범주형이 숫자로 잡힙니다. 메타(코드북)로 재정의합니다.",
-        code: `${HEAD}
+        label: "열 역할 확정 — 타깃·수치형·범주형·제외",
+        desc: "dtype만 보면 코드로 저장된 범주형이 숫자로 잡힙니다. NUM·CAT 목록으로 역할을 못박고 나머지는 뺍니다.",
+        code: `${STAT_HEAD}
 
-# dtype 기준 자동 분류 — 여기까지는 코드값도 '숫자'로 잡힌다
-auto_num = [c for c in df.columns if df[c].dtype != "O"]
+# dtype 기준 자동 분류 — 여기까지는 코드값(1·2·3)도 '숫자'로 잡힌다
+auto_num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+excluded = [c for c in df.columns if c not in NUM + CAT + [TARGET]]
+print("dtype이 숫자인 열:", auto_num)
+print("모형에서 빠지는 열:", excluded, " ← ID·중복 파생 등")
+print("CAT의 값은 '코드'라 평균을 낼 수 없다 — 원-핫으로 펴야 한다")
 
-# 코드북(meta)에 등재된 열은 값이 '코드'이므로 범주형으로 되돌린다.
-# OCCUPATION 평균이 4.15라는 말은 아무 뜻이 없다 — 평균을 낼 수 없는 값이다.
-cat = [c for c in CAT if c in df.columns]
-num = [c for c in auto_num if c not in cat and c != TARGET]
-print("수치형:", num)
-print("범주형:", cat)
-pd.DataFrame({
-    "열": num + cat,
-    "구분": ["수치형"] * len(num) + ["범주형"] * len(cat),
-    "고유값": [df[c].nunique() for c in num + cat],
-    "예시": [", ".join(map(str, sorted(df[c].unique())[:6])) for c in num + cat],
-})`,
+rows = []
+for c in [TARGET] + NUM + CAT:
+    vals = df[c].dropna().unique()
+    rows.append({
+        "열": c,
+        "역할": "타깃" if c == TARGET else ("수치형" if c in NUM else "범주형"),
+        "dtype": str(df[c].dtype),
+        "고유값": len(vals),
+        "예시": ", ".join(map(str, sorted(vals, key=str)[:5])),
+    })
+pd.DataFrame(rows)`,
       },
       {
         id: "prep-missing",
         label: "결측·중복 처리 — 중앙값·최빈값 대치",
         desc: "완전 중복 행을 지우고 수치형은 중앙값, 범주형은 최빈값으로 채웁니다(대치 전후 비교).",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 
 before = len(df)
 d = df.drop_duplicates().reset_index(drop=True)      # ① 완전 중복 제거
@@ -199,44 +219,47 @@ na_before = d.isna().sum()
 
 num_cols = d.select_dtypes("number").columns
 d[num_cols] = d[num_cols].fillna(d[num_cols].median())   # ② 수치형 → 중앙값(이상치에 둔감)
-for c in d.select_dtypes("object").columns:              # ③ 범주형 → 최빈값
+for c in d.columns.difference(num_cols):                 # ③ 그 밖 → 최빈값
     mode = d[c].mode()
-    d[c] = d[c].fillna(mode.iloc[0] if len(mode) else "미상")
+    if len(mode):
+        d[c] = d[c].fillna(mode.iloc[0])
 
 print(f"중복 제거 {before} → {len(d)}행,  남은 결측 {int(d.isna().sum().sum())}개")
 cmp = pd.DataFrame({"대치 전 결측": na_before, "대치 후 결측": d.isna().sum()})
-cmp[cmp.iloc[:, 0] > 0] if (cmp.iloc[:, 0] > 0).any() else cmp`,
+cmp = cmp[cmp.iloc[:, 0] > 0] if (cmp.iloc[:, 0] > 0).any() else cmp
+cmp.reset_index(names="열")`,
       },
       {
         id: "prep-outlier",
         label: "이상치 — IQR 경계·winsorize(자르기)",
         desc: "1.5×IQR 밖을 이상치로 세고, 삭제 대신 경계값으로 자른(winsorize) 열을 만듭니다.",
-        code: `${HEAD}
-COL = TARGET                                  # 점검할 열
+        code: `${STAT_HEAD}
+COL = TARGET                                  # 점검할 열 (설명변수를 보려면 NUM[0] 등으로)
 
-q1, q3 = df[COL].quantile([0.25, 0.75])
+s = df[COL].astype(float)
+q1, q3 = s.quantile([0.25, 0.75])
 iqr = q3 - q1
 lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-out = df[(df[COL] < lo) | (df[COL] > hi)]
-print(f"IQR 경계 [{lo:.2f}, {hi:.2f}]   이상치 {len(out)}건 ({len(out) / len(df):.1%})")
+out = s[(s < lo) | (s > hi)]
+print(f"IQR 경계 [{lo:.4g}, {hi:.4g}]   이상치 {len(out)}건 ({len(out) / len(s):.1%})")
 
 # 표본이 적을 때는 행을 버리는 것보다 경계로 자르는 편이 정보 손실이 적다
-d = df.copy()
-d[COL + "_w"] = d[COL].clip(lo, hi)
-print("→ 자른 뒤 왜도:", round(d[COL + "_w"].skew(), 3), "(원래", round(df[COL].skew(), 3), ")")
-d[[COL, COL + "_w"]].describe().round(3)`,
+w = s.clip(lo, hi)
+print(f"→ 자른 뒤 왜도 {w.skew():.3f} (원래 {s.skew():.3f})")
+pd.DataFrame({COL: s, COL + "_winsorized": w}).describe().reset_index(names="통계").round(4)`,
       },
       {
         id: "prep-encode",
         label: "범주형 인코딩 — 원-핫(drop_first)",
         desc: "코드값을 그대로 쓰면 없는 순서가 모형에 들어갑니다. 원-핫으로 펼치고 기준범주 하나를 뺍니다.",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 
-# RACE 3(백인)이 1(기타)의 3배라는 뜻이 아닌데, 숫자로 두면 모형은 그렇게 읽는다.
+# 코드 3이 코드 1의 3배라는 뜻이 아닌데, 숫자로 두면 모형은 그렇게 읽는다.
 # 원-핫은 범주마다 0/1 열을 만들고, 기준범주 하나는 절편에 흡수시킨다(drop_first).
-X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
-print(f"{df.shape[1] - 1}열 → {X.shape[1]}열")
-print("추가된 더미:", [c for c in X.columns if "_" in c][:8], "…")
+${DESIGN}
+print(f"설명변수 {len(NUM) + len(CAT)}열 → {X.shape[1]}열 "
+      f"(수치형 {len(NUM)} + 더미 {X.shape[1] - len(NUM)})")
+print("추가된 더미:", [c for c in X.columns if c not in NUM][:8], "…")
 X.head()`,
       },
       {
@@ -245,12 +268,12 @@ X.head()`,
         desc: "7:3으로 나눈 뒤 표준화를 train에서만 fit합니다. test 통계를 쓰면 성능이 부풀려집니다.",
         code: `from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
 print(f"train {X_tr.shape}   test {X_te.shape}")
-print("train 표준화 후 평균≈0·표준편차≈1, test는 train 기준이라 정확히 0·1이 아니다")
+print("train은 평균≈0·표준편차≈1, test는 train 기준이라 정확히 0·1이 아니다 — 정상이다")
 pd.DataFrame({
     "변수": X.columns,
     "train평균": A.mean(0).round(6),
@@ -269,23 +292,23 @@ pd.DataFrame({
         id: "fe-binning",
         label: "구간화(분위수) — 구간별 타깃 평균",
         desc: "연속 변수를 분위수로 잘라 구간별 타깃 평균이 단조로운지 봅니다(비선형 신호 탐지).",
-        code: `${HEAD}
-COL = "EDUCATION"                             # 구간화할 연속 변수
+        code: `${STAT_HEAD}
+COL = NUM[0]                                  # 구간화할 연속 변수
 
-d = df.copy()
+d = df[[COL, TARGET]].dropna().copy()
 d["구간"], bins = pd.qcut(d[COL], q=4, duplicates="drop", retbins=True)
 g = d.groupby("구간", observed=True)[TARGET].agg(건수="size", 평균="mean")
 g["전체대비"] = g["평균"] / d[TARGET].mean()
-print("구간 경계:", [round(float(b), 2) for b in bins])
+print(f"{COL} 구간 경계:", [round(float(b), 4) for b in bins])
 print("→ 구간별 평균이 단조롭게 오르면 선형항으로 충분, 꺾이면 제곱항·구간더미가 필요하다")
-g.round(3)`,
+g.reset_index().astype({"구간": str}).round(4)`,
       },
       {
         id: "fe-eta",
         label: "설명력 지표 η²(상관비) — 회귀판 IV",
         desc: "분류의 IV(정보값)에 대응하는 회귀 지표. 집단 간 분산 ÷ 전체 분산으로 범주형을 선별합니다.",
         code: `from scipy import stats
-${HEAD}
+${STAT_HEAD}
 
 # IV·WoE는 Target이 0/1인 분류 전용이다. 회귀에서는 상관비 eta^2를 쓴다.
 #   eta^2 = 집단 간 제곱합 / 전체 제곱합  (0~1, 클수록 그 범주가 타깃을 잘 가른다)
@@ -293,8 +316,10 @@ y = df[TARGET].astype(float)
 sst = float(((y - y.mean()) ** 2).sum())
 rows = []
 for c in CAT:
-    grp = [y[df[c] == v].to_numpy() for v in sorted(df[c].dropna().unique())]
+    grp = [y[df[c] == v].to_numpy() for v in df[c].dropna().unique()]
     grp = [g for g in grp if len(g) > 1]
+    if len(grp) < 2:
+        continue
     ssb = sum(len(g) * (g.mean() - y.mean()) ** 2 for g in grp)
     F, p = stats.f_oneway(*grp)
     eta2 = ssb / sst
@@ -306,44 +331,52 @@ pd.DataFrame(rows).sort_values("eta2", ascending=False).round(4).reset_index(dro
         id: "fe-derive",
         label: "파생변수 — 제곱항·비율·상호작용",
         desc: "수확체감(제곱항), 단위를 맞춘 비율, 두 조건이 겹칠 때만 생기는 효과(상호작용)를 만듭니다.",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 
-d = df.copy()
-# ① 제곱항 — 경력은 늘수록 임금이 오르다 꺾인다(수확체감)
-d["EXP2"] = d["EXPERIENCE"] ** 2
-# ② 비율 — 나이 대비 경력(경력 밀도). 절대값보다 뜻이 뚜렷할 때가 있다
-d["EXP_per_AGE"] = d["EXPERIENCE"] / d["AGE"]
-# ③ 상호작용 — 조합원이면서 학력이 높을 때만 생기는 추가 효과
-d["UNIONxEDU"] = d["UNION"] * d["EDUCATION"]
+a = NUM[0]                                    # 파생에 쓸 수치형 두 개 (필요하면 바꾼다)
+b = NUM[1] if len(NUM) > 1 else NUM[0]        # 수치형이 하나뿐이면 교차항 = 제곱항이 된다
+g = CAT[0]                                    # 상호작용에 쓸 범주형
+top = df[g].mode().iloc[0]                    # 그 범주의 최빈 수준을 0/1 지표로
 
-new = ["EXP2", "EXP_per_AGE", "UNIONxEDU"]
-print("타깃과의 상관:")
-print(d[new].corrwith(d[TARGET].astype(float)).round(4).to_string())
-d[["EDUCATION", "EXPERIENCE", "AGE", "UNION", *new, TARGET]].head()`,
+# 같은 열이 두 번 들어가면 d[a]가 DataFrame이 되어 대입이 깨진다 → 중복 제거
+d = df[list(dict.fromkeys([TARGET, a, b, g]))].copy()
+d[f"{a}^2"] = d[a] ** 2                       # ① 제곱항 — 오르다 꺾이는 수확체감
+d[f"{a}x{b}"] = d[a] * d[b]                   # ② 교차항 — 둘이 함께 클 때만 생기는 효과
+d[f"{a}/{b}"] = d[a] / d[b].replace(0, np.nan)  # ③ 비율 — 절대값보다 뜻이 뚜렷할 때
+d[f"{g}={top}"] = (d[g] == top).astype(float)
+d[f"{g}={top}x{a}"] = d[f"{g}={top}"] * d[a]  # ④ 범주 × 수치 상호작용
+
+made = list(dict.fromkeys([f"{a}^2", f"{a}x{b}", f"{a}/{b}", f"{g}={top}x{a}"]))
+base = d[list(dict.fromkeys([a, b]))].corrwith(d[TARGET].astype(float))
+print("원본 상관:", base.round(4).to_dict())
+print("파생 상관:", d[made].corrwith(d[TARGET].astype(float)).round(4).to_dict())
+d[list(dict.fromkeys([a, b, *made, TARGET]))].head(10).round(4)`,
       },
       {
         id: "fe-poly",
         label: "다항 특성 생성 — PolynomialFeatures",
         desc: "수치형만 골라 제곱·교차항까지 펼칩니다. 더미까지 펼치면 열이 폭발하므로 분리합니다.",
         code: `from sklearn.preprocessing import PolynomialFeatures
-${HEAD}
-NUM = ["EDUCATION", "EXPERIENCE", "AGE"]      # 펼칠 수치형만 지정
+${STAT_HEAD}
 
+src = df[NUM].apply(pd.to_numeric, errors="coerce")
+src = src.fillna(src.median())
 pf = PolynomialFeatures(degree=2, include_bias=False)
-Z = pd.DataFrame(pf.fit_transform(df[NUM].astype(float)),
-                 columns=pf.get_feature_names_out(NUM))
+Z = pd.DataFrame(pf.fit_transform(src), columns=pf.get_feature_names_out(NUM))
 print(f"{len(NUM)}열 → {Z.shape[1]}열 (원항 + 제곱 + 교차항)")
-print(Z.corrwith(df[TARGET].astype(float)).sort_values(key=abs, ascending=False).round(3).to_string())
-Z.head()`,
+
+r = Z.corrwith(df[TARGET].astype(float)).sort_values(key=abs, ascending=False)
+print(r.round(3).to_string())
+Z.head().round(4)`,
       },
       {
         id: "fe-transform",
         label: "변환 후보 비교 — log·sqrt·역수 왜도",
         desc: "치우친 변수에 어떤 변환이 가장 대칭에 가까워지는지 왜도로 한 번에 비교합니다.",
-        code: `${HEAD}
+        code: `${STAT_HEAD}
 COL = TARGET                                  # 변환을 검토할 열
 
-s = df[COL].astype(float)
+s = df[COL].astype(float).dropna()
 pos = s.clip(lower=1e-9)
 out = pd.DataFrame({
     "변환": ["원척도", "log", "sqrt", "역수(1/x)"],
@@ -373,22 +406,25 @@ const MODEL_GROUPS: WrangleSnippetGroup[] = [
         desc: "규제 없는 OLS로 기준 성능을 잡고, VIF로 다중공선성을 확인해 규제 회귀의 필요를 판단합니다.",
         code: `import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-${HEAD}
+${STAT_HEAD}
 
-X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
-y = df[TARGET].astype(float)
+${DESIGN}
 res = sm.OLS(y, sm.add_constant(X)).fit()
 print(f"R2 = {res.rsquared:.4f}   adj.R2 = {res.rsquared_adj:.4f}   F p = {res.f_pvalue:.3e}")
 
-# VIF — 10을 넘으면 그 변수는 다른 변수들로 거의 설명된다(계수가 불안정해짐).
-# 이 예제 데이터는 AGE ≈ EDUCATION + EXPERIENCE + 6 이라 VIF가 크게 튄다 → Ridge로 넘어갈 근거.
+# VIF — 10을 넘으면 그 변수는 다른 변수들로 거의 설명된다(계수가 불안정해진다).
+# 정의상 겹치는 변수(예: 나이 = 학력 + 경력 + 상수)가 있으면 여기서 튄다 → Ridge로 넘어갈 근거.
 Xc = sm.add_constant(X).astype(float).to_numpy()
-vif = pd.DataFrame({"변수": ["const"] + list(X.columns),
-                    "VIF": [variance_inflation_factor(Xc, i) for i in range(Xc.shape[1])]})
-print(vif.sort_values("VIF", ascending=False).head(5).round(1).to_string(index=False))
-pd.DataFrame({"변수": res.params.index, "계수": res.params.to_numpy(),
-              "p값": res.pvalues.to_numpy(),
-              "유의": np.where(res.pvalues.to_numpy() < 0.05, "*", "")}).round(4)`,
+vif = [variance_inflation_factor(Xc, i) for i in range(Xc.shape[1])]
+out = pd.DataFrame({"변수": ["const"] + list(X.columns),
+                    "계수": res.params.to_numpy(),
+                    "표준오차": res.bse.to_numpy(),
+                    "p값": res.pvalues.to_numpy(),
+                    "VIF": vif})
+out["유의"] = np.where(out["p값"] < 0.05, "○", "·")
+out["공선성"] = np.where(out["VIF"] > 10, "경보", "")
+print("VIF 상위:", out.nlargest(4, "VIF")[["변수", "VIF"]].round(1).to_dict("records"))
+out.round(4)`,
       },
       {
         id: "model-ridge",
@@ -397,7 +433,7 @@ pd.DataFrame({"변수": res.params.index, "계수": res.params.to_numpy(),
         code: `import matplotlib.pyplot as plt
 from sklearn.linear_model import Ridge, RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
@@ -407,8 +443,8 @@ cv = RidgeCV(alphas=alphas, cv=5).fit(A, y_tr)       # 5겹 교차검증으로 a
 p_tr, p_te = cv.predict(A), cv.predict(B)
 print(f"선택 alpha = {cv.alpha_:.4g}")
 print(f"R2   train {r2_score(y_tr, p_tr):.4f}   test {r2_score(y_te, p_te):.4f}")
-print(f"RMSE train {mean_squared_error(y_tr, p_tr) ** 0.5:.4f}   "
-      f"test {mean_squared_error(y_te, p_te) ** 0.5:.4f}")
+print(f"RMSE train {mean_squared_error(y_tr, p_tr) ** 0.5:.4g}   "
+      f"test {mean_squared_error(y_te, p_te) ** 0.5:.4g}")
 print("Ridge는 계수를 0으로 만들지 않는다 — 변수를 버리지 않고 크기만 줄인다")
 
 fig, ax = plt.subplots(figsize=(7, 3.6))
@@ -428,16 +464,17 @@ fig`,
         desc: "L1 규제는 쓸모가 적은 변수의 계수를 정확히 0으로 만듭니다. 살아남은 변수를 봅니다.",
         code: `from sklearn.linear_model import LassoCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
-cv = LassoCV(alphas=np.logspace(-3, 1, 60), cv=5, max_iter=50000, random_state=0).fit(A, y_tr)
+cv = LassoCV(alphas=np.logspace(-3, 1, 60) * np.std(y_tr), cv=5,
+             max_iter=50000, random_state=0).fit(A, y_tr)
 p_tr, p_te = cv.predict(A), cv.predict(B)
 keep = int((cv.coef_ != 0).sum())
 print(f"선택 alpha = {cv.alpha_:.4g}   살아남은 변수 {keep}/{X.shape[1]}개")
 print(f"R2   train {r2_score(y_tr, p_tr):.4f}   test {r2_score(y_te, p_te):.4f}")
-print(f"RMSE test {mean_squared_error(y_te, p_te) ** 0.5:.4f}")
+print(f"RMSE test {mean_squared_error(y_te, p_te) ** 0.5:.4g}")
 
 coef = pd.DataFrame({"변수": X.columns, "계수": cv.coef_})
 coef["선택"] = np.where(coef["계수"] != 0, "○", "· (제외)")
@@ -449,32 +486,30 @@ coef.reindex(coef["계수"].abs().sort_values(ascending=False).index).round(4).r
         desc: "Ridge와 Lasso를 섞습니다. 상관이 높은 변수 묶음을 함께 살리면서 일부는 버립니다.",
         code: `from sklearn.linear_model import ElasticNetCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
 cv = ElasticNetCV(l1_ratio=[0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 1.0],
-                  alphas=np.logspace(-3, 1, 40), cv=5,
+                  alphas=np.logspace(-3, 1, 40) * np.std(y_tr), cv=5,
                   max_iter=50000, random_state=0).fit(A, y_tr)
 p_tr, p_te = cv.predict(A), cv.predict(B)
 print(f"l1_ratio = {cv.l1_ratio_}  (1이면 Lasso, 0에 가까우면 Ridge)")
 print(f"alpha = {cv.alpha_:.4g}   0이 아닌 계수 {int((cv.coef_ != 0).sum())}/{X.shape[1]}개")
 print(f"R2   train {r2_score(y_tr, p_tr):.4f}   test {r2_score(y_te, p_te):.4f}")
-print(f"RMSE test {mean_squared_error(y_te, p_te) ** 0.5:.4f}")
+print(f"RMSE test {mean_squared_error(y_te, p_te) ** 0.5:.4g}")
 
-pd.DataFrame({"변수": X.columns, "계수": cv.coef_}) \
-  .pipe(lambda t: t.reindex(t["계수"].abs().sort_values(ascending=False).index)) \
-  .round(4).reset_index(drop=True).head(12)`,
+coef = pd.DataFrame({"변수": X.columns, "계수": cv.coef_})
+coef.reindex(coef["계수"].abs().sort_values(ascending=False).index).round(4).reset_index(drop=True).head(12)`,
       },
       {
         id: "model-poly",
         label: "비선형 — 다항회귀(차수 1·2·3 비교)",
-        desc: "수치형만 제곱·교차항으로 펼쳐 차수를 올려 봅니다. 차수가 오르면 train만 좋아지는 지점이 과적합입니다.",
+        desc: "수치형만 제곱·교차항으로 펼쳐 차수를 올려 봅니다. train만 좋아지는 지점이 과적합입니다.",
         code: `from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
-NUM = ["EDUCATION", "EXPERIENCE", "AGE"]      # 펼칠 수치형(더미는 그대로 둔다)
+${STAT_HEAD}
 
 ${PREP}
 
@@ -496,33 +531,60 @@ out.round(4)`,
       },
       {
         id: "model-log",
-        label: "비선형 — log 모형(반로그)·Duan 스미어링",
-        desc: "log(y)를 예측해 계수를 %로 읽고, 원척도로 되돌릴 때 생기는 과소추정을 스미어링으로 보정합니다.",
+        label: "비선형 — log 모형(반로그·로그-로그)·Duan 스미어링",
+        desc: "log(y)를 예측합니다. 반로그와 로그-로그를 함께 적합해 되돌린 값으로 비교하고, 과소추정은 스미어링으로 보정합니다.",
         code: `from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
+${LOGY}
 
-# 반로그(semi-log) 모형: log(y) = b0 + b1·x1 + …
-#   표준화 계수 b를 100배하면 "그 변수가 1표준편차 늘 때 임금 몇 %" 로 읽힌다.
-l_tr, l_te = np.log(y_tr), np.log(y_te)
-m = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, l_tr)
-lp_tr, lp_te = m.predict(A), m.predict(B)
+# 로그 모형은 두 가지 형태가 있고, 어느 쪽이 맞는지는 데이터가 정한다.
+#  ① 반로그(semi-log)  log(y) = b0 + b·z(x)    계수×100 = "x가 1표준편차 늘 때 y 몇 %"
+#  ② 로그-로그(log-log) log(y) = b0 + b·log(x)  계수 = 탄력성(%변화 ÷ %변화)
+# 설명변수도 자릿수가 넓으면(오른쪽 꼬리가 긴 금액 등) ①은 되돌릴 때 지수적으로 튄다.
+WIDE = [c for c in NUM if (df[c] > 0).all() and df[c].skew() > 1]   # 로그를 씌울 수치형
+print("로그-로그에 쓸 설명변수:", WIDE if WIDE else "없음(반로그와 같아진다)")
 
-# Duan 스미어링 — exp()로만 되돌리면 평균이 체계적으로 낮게 나온다(Jensen 부등식).
-#   보정계수 = 잔차 exp의 평균
-smear = float(np.exp(l_tr - lp_tr).mean())
-p_te = np.exp(lp_te) * smear
-print(f"로그척도 R2  train {r2_score(l_tr, lp_tr):.4f}   test {r2_score(l_te, lp_te):.4f}")
-print(f"스미어링 계수 = {smear:.4f}  (1보다 크면 exp()만 쓸 때 과소추정이라는 뜻)")
-print(f"원척도  R2 test {r2_score(y_te, p_te):.4f}   "
-      f"RMSE {mean_squared_error(y_te, p_te) ** 0.5:.4f}   "
-      f"보정 전 RMSE {mean_squared_error(y_te, np.exp(lp_te)) ** 0.5:.4f}")
+Xl_tr, Xl_te = X_tr.copy(), X_te.copy()
+for c in WIDE:
+    Xl_tr[c] = np.log(Xl_tr[c].clip(lower=1e-9))
+    Xl_te[c] = np.log(Xl_te[c].clip(lower=1e-9))
+scl = StandardScaler().fit(Xl_tr)
 
-pd.DataFrame({"변수": X.columns, "계수": m.coef_, "1표준편차당 %": m.coef_ * 100}) \
-  .pipe(lambda t: t.reindex(t["계수"].abs().sort_values(ascending=False).index)) \
-  .round(3).reset_index(drop=True).head(12)`,
+rows = []
+fits = {}
+for name, tr, te in [("반로그", A, B),
+                     ("로그-로그", scl.transform(Xl_tr), scl.transform(Xl_te))]:
+    m = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(tr, ly_tr)
+    lp_tr, lp_te = m.predict(tr), m.predict(te)
+    # Duan 스미어링 — exp()로만 되돌리면 평균이 체계적으로 낮게 나온다(Jensen 부등식).
+    #   고치는 것은 '편의'이지 RMSE가 아니다.
+    smear = float(np.exp(ly_tr - lp_tr).mean())
+    p_te = np.exp(lp_te) * smear
+    fits[name] = (m, smear)
+    rows.append({"형태": name,
+                 "로그척도 R2_test": r2_score(ly_te, lp_te),
+                 "원척도 R2_test": r2_score(y_te, p_te),
+                 "원척도 RMSE_test": mean_squared_error(y_te, p_te) ** 0.5,
+                 "smearing": smear,
+                 "예측최대/실제최대": p_te.max() / y_te.max()})
+
+out = pd.DataFrame(rows)
+print(out.round(4).to_string(index=False))
+best = out.loc[out["원척도 R2_test"].idxmax(), "형태"]
+if (out["예측최대/실제최대"] > 2).any():
+    print("⚠ 되돌린 예측이 실제 최대의 2배를 넘는 형태가 있다 — 그 형태는 미지정(misspecified)이다")
+print(f"→ 원척도 기준으로는 '{best}'가 낫다. 로그척도 R2만 보고 고르면 안 된다 — "
+      f"되돌린 값으로 비교해야 한다")
+
+m, smear = fits[best]
+unit = "1표준편차당 %" if best == "반로그" else "탄력성(%/%)"
+pd.DataFrame({"변수": X.columns, "계수": m.coef_,
+              unit: m.coef_ * (100 if best == "반로그" else 1)}) \\
+  .pipe(lambda t: t.reindex(t["계수"].abs().sort_values(ascending=False).index)) \\
+  .round(4).reset_index(drop=True).head(12)`,
       },
     ],
   },
@@ -539,22 +601,22 @@ const EVAL_GROUPS: WrangleSnippetGroup[] = [
         desc: "한 모델의 train·test 지표를 나란히 놓고 과적합 폭을 봅니다(회귀는 R² 높게·RMSE 낮게).",
         code: `from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
 model = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, y_tr)
 p_tr, p_te = model.predict(A), model.predict(B)
 
-def score(y, p):
-    return {"R2": r2_score(y, p), "RMSE": mean_squared_error(y, p) ** 0.5,
-            "MAE": mean_absolute_error(y, p),
-            "MAPE%": float(np.mean(np.abs((y - p) / np.clip(y, 1e-9, None))) * 100)}
+def score(t, p):
+    return {"R2": r2_score(t, p), "RMSE": mean_squared_error(t, p) ** 0.5,
+            "MAE": mean_absolute_error(t, p),
+            "MAPE%": float(np.mean(np.abs((t - p) / np.clip(np.abs(t), 1e-9, None))) * 100)}
 
 out = pd.DataFrame({"train": score(y_tr, p_tr), "test": score(y_te, p_te)})
 out["차이"] = out["train"] - out["test"]
 print("R2 차이가 크면 과적합 — train에만 맞춘 것이다")
-out.round(4)`,
+out.reset_index(names="지표").round(4)`,
       },
       {
         id: "eval-cv",
@@ -564,18 +626,18 @@ out.round(4)`,
 from sklearn.model_selection import KFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
-X = pd.get_dummies(df.drop(columns=[TARGET]), columns=CAT, drop_first=True, dtype=float)
-y = df[TARGET].astype(float)
+${DESIGN}
 kf = KFold(n_splits=5, shuffle=True, random_state=1234)
+sd = float(np.std(y))
 
 # 표준화를 파이프라인에 넣어야 겹마다 train에서만 fit된다(교차검증 중 누수 방지)
 cands = {
     "Ridge": RidgeCV(alphas=np.logspace(-2, 3, 40)),
-    "Lasso": LassoCV(alphas=np.logspace(-3, 1, 40), cv=5, max_iter=50000, random_state=0),
+    "Lasso": LassoCV(alphas=np.logspace(-3, 1, 40) * sd, cv=5, max_iter=50000, random_state=0),
     "ElasticNet": ElasticNetCV(l1_ratio=[0.3, 0.5, 0.7, 0.9, 1.0],
-                               alphas=np.logspace(-3, 1, 30), cv=5,
+                               alphas=np.logspace(-3, 1, 30) * sd, cv=5,
                                max_iter=50000, random_state=0),
 }
 rows = []
@@ -593,10 +655,11 @@ pd.DataFrame(rows).round(4)`,
         code: `from sklearn.linear_model import RidgeCV, LassoCV, ElasticNetCV
 from sklearn.preprocessing import PolynomialFeatures
 ${MIMP}
-${HEAD}
-NUM = ["EDUCATION", "EXPERIENCE", "AGE"]
+${STAT_HEAD}
 
 ${PREP}
+${LOGY}
+sd = float(np.std(y_tr))
 
 rows = []
 def add(name, p_tr, p_te, note=""):
@@ -606,14 +669,13 @@ def add(name, p_tr, p_te, note=""):
                  "RMSE_test": mean_squared_error(y_te, p_te) ** 0.5, "비고": note})
 
 for name, est in [("Ridge", RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5)),
-                  ("Lasso", LassoCV(alphas=np.logspace(-3, 1, 60), cv=5,
+                  ("Lasso", LassoCV(alphas=np.logspace(-3, 1, 60) * sd, cv=5,
                                     max_iter=50000, random_state=0)),
                   ("ElasticNet", ElasticNetCV(l1_ratio=[0.3, 0.5, 0.7, 0.9, 1.0],
-                                              alphas=np.logspace(-3, 1, 30), cv=5,
+                                              alphas=np.logspace(-3, 1, 30) * sd, cv=5,
                                               max_iter=50000, random_state=0))]:
     m = est.fit(A, y_tr)
-    n0 = int((m.coef_ != 0).sum())
-    add(name, m.predict(A), m.predict(B), f"변수 {n0}/{X.shape[1]}")
+    add(name, m.predict(A), m.predict(B), f"변수 {int((m.coef_ != 0).sum())}/{X.shape[1]}")
 
 # 다항(2차) — 수치형만 펼친다
 pf = PolynomialFeatures(degree=2, include_bias=False)
@@ -624,11 +686,19 @@ mp = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(s2.transform(Ztr), y_tr)
 add("Polynomial(2)", mp.predict(s2.transform(Ztr)), mp.predict(s2.transform(Zte)),
     f"특성 {Ztr.shape[1]}")
 
-# 로그 모형 — Duan 스미어링으로 원척도 복원 후 같은 지표로 비교
-ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, np.log(y_tr))
-sm_ = float(np.exp(np.log(y_tr) - ml.predict(A)).mean())
-add("Log(Ridge)", np.exp(ml.predict(A)) * sm_, np.exp(ml.predict(B)) * sm_,
-    f"smearing {sm_:.3f}")
+# 로그 모형 — 설명변수도 꼬리가 길면 로그-로그로 적합해야 되돌릴 때 튀지 않는다.
+# (반로그로 고정하면 금액 같은 변수에서 예측이 지수적으로 폭발한다 — '비선형 log 모형' 조각 참조)
+WIDE = [c for c in NUM if (df[c] > 0).all() and df[c].skew() > 1]
+Ltr, Lte = X_tr.copy(), X_te.copy()
+for c in WIDE:
+    Ltr[c] = np.log(Ltr[c].clip(lower=1e-9))
+    Lte[c] = np.log(Lte[c].clip(lower=1e-9))
+scl = StandardScaler().fit(Ltr)
+ml = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(scl.transform(Ltr), ly_tr)
+sm_ = float(np.exp(ly_tr - ml.predict(scl.transform(Ltr))).mean())
+add("Log(Ridge)",
+    np.exp(ml.predict(scl.transform(Ltr))) * sm_, np.exp(ml.predict(scl.transform(Lte))) * sm_,
+    f"{'로그-로그' if WIDE else '반로그'} · smearing {sm_:.3f}")
 
 out = pd.DataFrame(rows).sort_values("R2_test", ascending=False).reset_index(drop=True)
 out["과적합폭"] = out["R2_train"] - out["R2_test"]
@@ -645,7 +715,7 @@ from statsmodels.stats.diagnostic import het_breuschpagan
 from scipy import stats
 from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
@@ -653,7 +723,7 @@ model = RidgeCV(alphas=np.logspace(-2, 3, 40), cv=5).fit(A, y_tr)
 fit = model.predict(A)
 resid = y_tr.to_numpy() - fit
 
-lm, lm_p, f, f_p = het_breuschpagan(resid, sm.add_constant(A))
+lm_p = het_breuschpagan(resid, sm.add_constant(A))[1]
 print(f"Breusch-Pagan p = {lm_p:.3e}  →  "
       f"{'분산이 일정하지 않다(이분산) — 로그 변환·가중회귀 검토' if lm_p < 0.05 else '등분산 가정 유지'}")
 print(f"잔차 왜도 {stats.skew(resid):.3f}   평균 {resid.mean():.3e}")
@@ -676,7 +746,7 @@ fig`,
         code: `import matplotlib.pyplot as plt
 from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
@@ -692,7 +762,7 @@ ax.set_xlabel(f"표준화 계수 (1표준편차 증가 시 {TARGET} 변화)")
 ax.set_title("변수 중요도 — 크기 순")
 fig.tight_layout()
 
-print(f"절편 {model.intercept_:.3f} = 모든 변수가 평균일 때의 {TARGET}")
+print(f"절편 {model.intercept_:.4g} = 모든 변수가 평균일 때의 {TARGET}")
 print(coef.round(4).to_string(index=False))
 fig`,
       },
@@ -702,7 +772,7 @@ fig`,
         desc: "최종 모델의 예측값을 분위수로 잘라 실무용 밴드(하·중·상)를 만들고 실적과 대조합니다.",
         code: `from sklearn.linear_model import RidgeCV
 ${MIMP}
-${HEAD}
+${STAT_HEAD}
 
 ${PREP}
 
@@ -711,16 +781,17 @@ pred = model.predict(B)
 resid_sd = float(np.std(y_tr.to_numpy() - model.predict(A), ddof=1))
 
 band = pd.DataFrame({"실적": y_te.to_numpy(), "예측": pred})
-band["밴드"] = pd.qcut(band["예측"], q=3, labels=["하위", "중위", "상위"])
+# rank로 자르면 예측값에 동점이 있어도 구간 경계가 겹치지 않는다
+band["밴드"] = pd.qcut(band["예측"].rank(method="first"), q=3, labels=["하위", "중위", "상위"])
 band["하한"] = band["예측"] - 1.96 * resid_sd     # 근사 95% 예측구간
 band["상한"] = band["예측"] + 1.96 * resid_sd
 hit = float(((band["실적"] >= band["하한"]) & (band["실적"] <= band["상한"])).mean())
-print(f"잔차 표준편차 {resid_sd:.3f}   95% 예측구간 적중률 {hit:.1%} (목표 ≈ 95%)")
+print(f"잔차 표준편차 {resid_sd:.4g}   95% 예측구간 적중률 {hit:.1%} (목표 ≈ 95%)")
 
 g = band.groupby("밴드", observed=True).agg(건수=("실적", "size"), 예측평균=("예측", "mean"),
                                            실적평균=("실적", "mean"), 실적중앙=("실적", "median"))
 g["괴리%"] = (g["예측평균"] / g["실적평균"] - 1) * 100
-g.round(3)`,
+g.reset_index().round(4)`,
       },
     ],
   },

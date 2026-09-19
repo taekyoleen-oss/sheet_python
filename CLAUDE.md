@@ -57,6 +57,10 @@
 - 자리표시자 `{{range}}`는 **`xl(...)` 호출 전체**로 치환된다 → `df = {{range}}`로 쓰고 따옴표 안에 넣지 않는다.
 - 코드 삽입 팝업(`SnippetInsertDialog`)과 샘플 워크북 메뉴(`FileMenu`)가 같은 2단 구분을 쓴다.
 - 조각을 고치면 `tests/pyodide/example-snippets.test.ts`가 **전부 실제로 실행**해 확인한다.
+- 통계분석 조각은 **머리말 4줄(`df`·`TARGET`·`CAT`·`NUM`)만 바꾸면 다른 표에도 그대로 쓰여야 한다** —
+  설계행렬은 `df[NUM + CAT]` 화이트리스트(ID 열 자동 제외) + `fillna(median)`, 비교할 범주는 `CAT[0]`,
+  구간화할 열은 `NUM[0]`에서 끌어 쓴다. 열 이름을 코드에 박지 않는다.
+  `tests/pyodide/stat-portability.test.ts`가 표 4종(wage·policy·claims·experience)으로 이를 지킨다.
 
 ## 7. 서브에이전트
 
