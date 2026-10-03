@@ -32,10 +32,17 @@ import {
   type DateOrder,
   type InferResult,
 } from "@/lib/grid/clipboard/infer";
+import {
+  buildFillEdits,
+  buildPasteEdits,
+  forgetCopy,
+  snapshotRange,
+  type CopiedBlock,
+} from "@/lib/grid/clipboard/internal";
 import { formatCellDisplay } from "@/lib/grid/format";
 import { useWorkbookStore, type CellEdit } from "@/lib/grid/model";
 import { loadSettings } from "@/lib/storage/db";
-import { cellKey, type Cell } from "@/types/workbook";
+import { cellKey, type Cell, type CellRange } from "@/types/workbook";
 
 /** 열 유형 재정의: 자동/숫자/문자/날짜/불리언 */
 type ColumnOverride = "auto" | "n" | "s" | "d" | "b";
@@ -44,6 +51,101 @@ type PasteTarget = "anchor" | "newSheet";
 const usePasteStore = create<{ raw: string[][] | null; dateOrder: DateOrder }>()(
   () => ({ raw: null, dateOrder: "ymd" }),
 );
+
+const SPILL_OVERLAP =
+  "붙여넣기 범위가 Python 블록의 spill 셀과 겹칩니다. 다른 위치를 선택하세요.";
+
+/** 편집 목록 반영 (한 setCells = 한 undo 단계) + 통지. spill 셀과 겹치면 중단 */
+function applyEdits(edits: CellEdit[]): boolean {
+  const state = useWorkbookStore.getState();
+  const sheetId = state.activeSheetId;
+  const sheet = state.workbook.sheets.find((s) => s.id === sheetId);
+  if (!sheet || edits.length === 0) return false;
+  if (edits.some((e) => sheet.cells[cellKey(e.r, e.c)]?.src)) {
+    toast.error(SPILL_OVERLAP);
+    return false;
+  }
+  state.setCells(sheetId, edits);
+  const rs = edits.map((e) => e.r);
+  const cs = edits.map((e) => e.c);
+  notifyWorkbookEdit([
+    { sheetId, r0: Math.min(...rs), c0: Math.min(...cs), r1: Math.max(...rs), c1: Math.max(...cs) },
+  ]);
+  return true;
+}
+
+/** 부록 O.3: 앱 안에서 복사한 범위 붙여넣기 — 수식 상대 참조 이동, 선택이 정수배면 타일링 */
+export const applyInternalPaste = (src: CopiedBlock): boolean => {
+  const state = useWorkbookStore.getState();
+  const sel = state.selection ?? { r0: 0, c0: 0, r1: 0, c1: 0 };
+  if (!src.cut) return applyEdits(buildPasteEdits(src, sel));
+  // 부록 O.4 잘라내기 → 이동 (1회용)
+  forgetCopy();
+  const srcRange = {
+    r0: src.r0,
+    c0: src.c0,
+    r1: src.r0 + src.cells.length - 1,
+    c1: src.c0 + (src.cells[0]?.length ?? 1) - 1,
+  };
+  if (src.sheetId === state.activeSheetId) {
+    const problem = state.moveRange(state.activeSheetId, srcRange, { r: sel.r0, c: sel.c0 });
+    if (problem) {
+      toast.error(problem);
+      return false;
+    }
+    const dest = {
+      r0: sel.r0,
+      c0: sel.c0,
+      r1: sel.r0 + srcRange.r1 - srcRange.r0,
+      c1: sel.c0 + srcRange.c1 - srcRange.c0,
+    };
+    notifyWorkbookEdit([
+      { sheetId: state.activeSheetId, ...srcRange },
+      { sheetId: state.activeSheetId, ...dest },
+    ]);
+    return true;
+  }
+  // ponytail: 다른 시트로의 잘라내기는 "수식째 복사 + 원본 지우기" — 다른 수식의 참조는 따라가지 않는다
+  if (!applyEdits(buildPasteEdits({ ...src, cut: false }, { ...sel, r1: sel.r0, c1: sel.c0 }))) return false;
+  if (src.sheetId) {
+    state.clearRange(src.sheetId, srcRange);
+    notifyWorkbookEdit([{ sheetId: src.sheetId, ...srcRange }]);
+  }
+  return true;
+};
+
+/** 부록 O.4 채우기 핸들 — 원본 범위를 대상까지 연속 패턴으로 채운다 */
+export function applyFill(src: CellRange, dest: CellRange): boolean {
+  const state = useWorkbookStore.getState();
+  const sheet = state.workbook.sheets.find((s) => s.id === state.activeSheetId);
+  if (!sheet) return false;
+  return applyEdits(buildFillEdits(sheet, src, dest));
+}
+
+/**
+ * 부록 O.3: 채우기 — Ctrl+D(아래로)·Ctrl+R(오른쪽으로). 선택 첫 행/열을 나머지에 복사.
+ * 한 행/열만 선택했으면 바로 위/왼쪽 셀을 가져온다 (엑셀 동일).
+ */
+export function fillSelection(dir: "down" | "right"): boolean {
+  const state = useWorkbookStore.getState();
+  const sheet = state.workbook.sheets.find((s) => s.id === state.activeSheetId);
+  const sel = state.selection;
+  if (!sheet || !sel) return false;
+  const r0 = Math.min(sel.r0, sel.r1);
+  const r1 = Math.max(sel.r0, sel.r1);
+  const c0 = Math.min(sel.c0, sel.c1);
+  const c1 = Math.max(sel.c0, sel.c1);
+  if (dir === "down") {
+    const from = r1 > r0 ? r0 : r0 - 1;
+    if (from < 0) return false;
+    const src = snapshotRange(sheet, { r0: from, c0, r1: from, c1 });
+    return applyEdits(buildPasteEdits(src, { r0: from + 1, c0, r1, c1 }));
+  }
+  const from = c1 > c0 ? c0 : c0 - 1;
+  if (from < 0) return false;
+  const src = snapshotRange(sheet, { r0, c0: from, r1, c1: from });
+  return applyEdits(buildPasteEdits(src, { r0, c0: from + 1, r1, c1 }));
+}
 
 /** 붙여넣은 셀을 스토어에 반영 (한 setCells = 한 undo 단계). spill 셀과 겹치면 중단 */
 export function applyPastedCells(
@@ -66,9 +168,7 @@ export function applyPastedCells(
   for (let i = 0; i < cells.length; i++) {
     for (let j = 0; j < cells[i].length; j++) {
       if (sheet.cells[cellKey(base.r + i, base.c + j)]?.src) {
-        toast.error(
-          "붙여넣기 범위가 Python 블록의 spill 셀과 겹칩니다. 다른 위치를 선택하세요.",
-        );
+        toast.error(SPILL_OVERLAP);
         return false;
       }
     }

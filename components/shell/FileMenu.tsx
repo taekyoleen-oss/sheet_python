@@ -190,13 +190,19 @@ export async function openWorkbookFile(file: File): Promise<void> {
       wb.sheets = [sheet];
       useWorkbookStore.getState().loadWorkbook(wb);
     } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
-      const { sheetsFromFileData } = await import("@/lib/io/xlsx");
-      const sheets = sheetsFromFileData(await file.arrayBuffer());
+      const { readXlsxBook } = await import("@/lib/io/xlsx");
+      const { sheets, names, stats } = readXlsxBook(await file.arrayBuffer());
       if (sheets.length === 0) throw new Error("시트가 없습니다");
       const wb = createWorkbook();
       wb.title = file.name.replace(/\.(xlsx|xls)$/i, "");
       wb.sheets = sheets;
+      if (names.length > 0) wb.names = names;
       useWorkbookStore.getState().loadWorkbook(wb);
+      if (stats.dropped > 0) {
+        toast.warning(
+          `수식 ${stats.kept + stats.dropped}개 중 ${stats.dropped}개는 지원하지 않는 함수·문법이라 값으로 가져왔습니다`,
+        );
+      }
     } else {
       toast.error("지원하지 않는 파일 형식입니다 (.pygrid.json / .csv / .xlsx)");
       return;
@@ -396,7 +402,7 @@ export default function FileMenu() {
   const exportXlsx = async () => {
     const { sheetsToXlsxBlob } = await import("@/lib/io/xlsx");
     const wb = useWorkbookStore.getState().workbook;
-    downloadBlob(sheetsToXlsxBlob(wb.sheets), `${wb.title || "워크북"}.xlsx`);
+    downloadBlob(sheetsToXlsxBlob(wb.sheets, wb.names), `${wb.title || "워크북"}.xlsx`);
   };
 
   const exportCsv = async () => {

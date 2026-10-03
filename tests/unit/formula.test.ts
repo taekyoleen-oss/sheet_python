@@ -18,7 +18,7 @@ const grid =
   };
 
 const empty = grid({});
-const ev = (src: string, getCell: GetCell = empty) => parseFormula(src).eval(getCell);
+const ev = (src: string, getCell: GetCell = empty) => parseFormula(src).eval(getCell).v;
 
 describe("isFormula", () => {
   it("= 시작만 수식, = 단독·공백은 제외", () => {
@@ -69,7 +69,7 @@ describe("셀·시트 참조", () => {
 
   it("빈 셀 참조 = 0", () => {
     expect(ev("=A9+1", g)).toBe(1);
-    expect(ev("=-Z99", g)).toBe(-0);
+    expect(ev("=-Z99", g)).toBe(0);
   });
 
   it("refs에 참조가 수집된다 (시트 이름 포함)", () => {
@@ -122,8 +122,7 @@ describe("오류", () => {
   it("#NAME? — 미지원 함수·문법", () => {
     expect(ev("=FOO(1)")).toBe("#NAME?");
     expect(ev("=1+")).toBe("#NAME?");
-    expect(ev('="문자열"')).toBe("#NAME?");
-    expect(ev("=1>2")).toBe("#NAME?");
+    expect(ev("=정의된이름")).toBe("#NAME?");
   });
 
   it("#REF! — 파싱 불가 참조·시트 없음", () => {
@@ -144,8 +143,8 @@ describe("오류", () => {
     expect(ev("=1/A1", empty)).toBe("#DIV/0!"); // 빈 셀 = 0
   });
 
-  it("한국어 설명 매핑 5종 + isFormulaError", () => {
-    for (const code of ["#NAME?", "#REF!", "#VALUE!", "#DIV/0!", "#CIRC!"] as const) {
+  it("한국어 설명 매핑 + isFormulaError", () => {
+    for (const code of ["#NAME?", "#REF!", "#VALUE!", "#DIV/0!", "#CIRC!", "#N/A", "#NUM!"] as const) {
       expect(FORMULA_ERROR_KO[code]).toBeTruthy();
       expect(isFormulaError(code)).toBe(true);
     }

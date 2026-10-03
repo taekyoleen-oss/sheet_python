@@ -11,6 +11,7 @@ import {
   type DataEditorRef,
   type DrawCellCallback,
   type EditableGridCell,
+  type FillPatternEventArgs,
   type GridCell,
   type GridColumn,
   type GridMouseEventArgs,
@@ -20,6 +21,7 @@ import {
 } from "@glideapps/glide-data-grid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { applyFill } from "@/components/grid/PasteImportDialog";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -30,14 +32,13 @@ import {
 import { colToLetter, formatA1 } from "@/lib/grid/a1";
 import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { formatCellDisplay } from "@/lib/grid/format";
-import { FORMULA_ERROR_KO, isFormula, isFormulaError } from "@/lib/grid/formula";
+import { cellFromInput, FORMULA_ERROR_KO, isFormulaError } from "@/lib/grid/formula";
 import { useWorkbookStore } from "@/lib/grid/model";
 import { dataEdge, type Dir } from "@/lib/grid/navigate";
 import { outputsOf, srcBlockId } from "@/lib/grid/outputs";
 import { applyAnchorPick } from "@/lib/grid/run-block";
 import {
   cellKey,
-  type Cell,
   type CellRange,
   type OutputBinding,
   type PyBlock,
@@ -76,19 +77,6 @@ const WARNING = "#D9A441";
 const DESTRUCTIVE = "#C2504A";
 const MUTED = "#6B7280";
 
-/** 단일 셀 편집 시 단순 유형 추론: `=수식` → fx(값은 스토어 재계산이 채운다), 숫자 → n, TRUE/FALSE → b, 나머지 문자열 */
-function inferCell(text: string): Cell | null {
-  const trimmed = text.trim();
-  if (trimmed === "") return null;
-  if (isFormula(trimmed)) return { v: null, t: "n", fx: trimmed };
-  if (/^(true|false)$/i.test(trimmed)) {
-    return { v: trimmed.toLowerCase() === "true", t: "b" };
-  }
-  const n = Number(trimmed);
-  if (!Number.isNaN(n)) return { v: n, t: "n" };
-  return { v: text, t: "s" };
-}
-
 const inRange = (rg: CellRange, r: number, c: number): boolean =>
   r >= rg.r0 && r <= rg.r1 && c >= rg.c0 && c <= rg.c1;
 
@@ -121,6 +109,7 @@ export default function SheetGrid() {
       cur.width === storeSelection.c1 - storeSelection.c0 + 1 &&
       cur.height === storeSelection.r1 - storeSelection.r0 + 1;
     if (!same) {
+      editorRef.current?.scrollTo(storeSelection.c0, storeSelection.r0); // 이름 상자·이름 이동
       setGridSelection({
         columns: CompactSelection.empty(),
         rows: CompactSelection.empty(),
@@ -488,7 +477,7 @@ export default function SheetGrid() {
       if (newValue.kind !== GridCellKind.Text) return;
       const [col, row] = item;
       const store = useWorkbookStore.getState();
-      const ok = store.setCellValue(sheet.id, row, col, inferCell(newValue.data));
+      const ok = store.setCellValue(sheet.id, row, col, cellFromInput(newValue.data));
       if (!ok) {
         const src = sheet.cells[cellKey(row, col)]?.src;
         if (src) toast.error(spillLockMessage(src), { id: "spill-lock" });
@@ -594,6 +583,18 @@ export default function SheetGrid() {
     },
     [sheet.id, sheet.rowCount, sheet.colCount],
   );
+
+  /** 부록 O.4 채우기 핸들: glide 기본 복사 대신 연속 패턴(수식 이동·숫자 추세·끝 숫자 증가) */
+  const onFillPattern = useCallback((e: FillPatternEventArgs) => {
+    e.preventDefault();
+    const rg = (x: { x: number; y: number; width: number; height: number }) => ({
+      r0: x.y,
+      c0: x.x,
+      r1: x.y + x.height - 1,
+      c1: x.x + x.width - 1,
+    });
+    applyFill(rg(e.patternSource), rg(e.fillDestination));
+  }, []);
 
   const onColumnResize = useCallback(
     (_column: GridColumn, newSize: number, colIndex: number) => {
@@ -835,6 +836,8 @@ export default function SheetGrid() {
             gridSelection={gridSelection}
             onGridSelectionChange={onGridSelectionChange}
             onDelete={onDelete}
+            fillHandle={true}
+            onFillPattern={onFillPattern}
             onColumnResize={onColumnResize}
             onCellContextMenu={onCellContextMenu}
             onCellClicked={onCellClicked}

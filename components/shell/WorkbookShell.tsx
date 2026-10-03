@@ -10,7 +10,12 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import PasteImportDialog, { startPasteFlow } from "@/components/grid/PasteImportDialog";
+import PasteImportDialog, {
+  applyInternalPaste,
+  fillSelection,
+  startPasteFlow,
+} from "@/components/grid/PasteImportDialog";
+import FormulaBar from "@/components/grid/FormulaBar";
 import SheetEditToolbar from "@/components/grid/SheetEditToolbar";
 import SheetGrid from "@/components/grid/SheetGrid";
 import SheetTabs from "@/components/grid/SheetTabs";
@@ -37,6 +42,7 @@ const ReferenceView = dynamic(() => import("@/components/reference/ReferenceView
     <p className="p-8 text-center text-sm text-muted-foreground">참조 콘텐츠 불러오는 중…</p>
   ),
 });
+import { internalCopyFor, rememberCopy } from "@/lib/grid/clipboard/internal";
 import { parseClipboard } from "@/lib/grid/clipboard/parse";
 import { serializeRange } from "@/lib/grid/clipboard/serialize";
 import { useWorkbookStore } from "@/lib/grid/model";
@@ -191,6 +197,12 @@ export default function WorkbookShell() {
         addBlockAtSelection(); // ＋ Python 블록 (§2.3.1)
         return;
       }
+      // 부록 O.3: 채우기 Ctrl+D(아래)·Ctrl+R(오른쪽) — 브라우저 북마크·새로고침보다 우선
+      if ((key === "d" || key === "r") && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        fillSelection(key === "d" ? "down" : "right");
+        return;
+      }
       if (key !== "z" && key !== "y") return;
       e.preventDefault();
       const temporal = useWorkbookStore.temporal.getState();
@@ -210,9 +222,16 @@ export default function WorkbookShell() {
       const text = e.clipboardData.getData("text/plain") || undefined;
       if (!html && !text) return;
       e.preventDefault();
+      // 부록 O.3: 이 앱에서 복사한 범위면 수식째 붙인다 (상대 참조 이동)
+      const internal = internalCopyFor(text);
+      if (internal) {
+        applyInternalPaste(internal);
+        return;
+      }
       void startPasteFlow(parseClipboard({ html, text }));
     };
     const onCopy = (e: ClipboardEvent) => {
+      const cut = e.type === "cut"; // 부록 O.4: 잘라내기 — 값은 클립보드로, 이동은 붙여넣을 때
       if (useWorkbookStore.getState().view === "reference") return; // 참조 뷰: 페이지 텍스트 복사에 양보
       if (isTextInput(e.target) || !e.clipboardData) return;
       const domSelection = window.getSelection();
@@ -224,13 +243,16 @@ export default function WorkbookShell() {
       const { text, html } = serializeRange(sheet, selection);
       e.clipboardData.setData("text/plain", text);
       e.clipboardData.setData("text/html", html);
+      rememberCopy(sheet, selection, text, cut);
       e.preventDefault();
     };
     window.addEventListener("paste", onPaste);
     window.addEventListener("copy", onCopy);
+    window.addEventListener("cut", onCopy);
     return () => {
       window.removeEventListener("paste", onPaste);
       window.removeEventListener("copy", onCopy);
+      window.removeEventListener("cut", onCopy);
     };
   }, []);
 
@@ -336,6 +358,7 @@ export default function WorkbookShell() {
                   className={`flex h-full min-w-0 flex-col ${dropActive ? "ring-2 ring-inset ring-primary" : ""}`}
                 >
                   <SheetEditToolbar />
+                  <FormulaBar />
                   <SheetGrid />
                   <SheetTabs />
                 </div>
@@ -374,6 +397,7 @@ export default function WorkbookShell() {
                         className={`flex h-full min-w-0 flex-col ${dropActive ? "ring-2 ring-inset ring-primary" : ""}`}
                       >
                         <SheetEditToolbar />
+                        <FormulaBar />
                         <SheetGrid />
                         <SheetTabs />
                       </div>

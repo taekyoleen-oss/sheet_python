@@ -35,6 +35,7 @@ import {
 import { ToolButton } from "@/components/shell/ShellBar";
 import type { DateOrder } from "@/lib/grid/clipboard/infer";
 import { parseClipboard } from "@/lib/grid/clipboard/parse";
+import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { isRangeBold, useWorkbookStore, type CellEdit } from "@/lib/grid/model";
 import { loadSettings, saveSettings } from "@/lib/storage/db";
 import { cellKey, parseCellKey, type Cell } from "@/types/workbook";
@@ -222,6 +223,16 @@ export default function SheetEditToolbar() {
   const colSpan = selection ? selection.c1 - selection.c0 + 1 : 1;
   const sid = () => store().activeSheetId;
 
+  /** 부록 O.4: 행/열 구조 변경 뒤 — 앵커·xl() 참조가 바뀐 블록 + 이 시트를 읽는 블록 재실행 */
+  const structural = (changedBlocks: string[]) => {
+    const sheet = store().workbook.sheets.find((s) => s.id === sid());
+    if (!sheet) return;
+    notifyWorkbookEdit(
+      [{ sheetId: sheet.id, r0: 0, c0: 0, r1: sheet.rowCount - 1, c1: sheet.colCount - 1 }],
+      changedBlocks,
+    );
+  };
+
   const toggleFreeze = () => {
     const target = colIndex + 1;
     store().setFrozenCols(sid(), frozenCols === target ? 0 : target);
@@ -239,19 +250,19 @@ export default function SheetEditToolbar() {
       <Separator orientation="vertical" className="mx-1 h-5" />
 
       <ToolButton label={`행 삽입 (${rowSpan}개)`} disabled={!selection}
-        onClick={() => store().insertRows(sid(), rowIndex, rowSpan)}>
+        onClick={() => structural(store().insertRows(sid(), rowIndex, rowSpan))}>
         <span className="text-xs font-semibold">행+</span>
       </ToolButton>
       <ToolButton label={`행 삭제 (${rowSpan}개)`} disabled={!selection}
-        onClick={() => store().deleteRows(sid(), rowIndex, rowSpan)}>
+        onClick={() => structural(store().deleteRows(sid(), rowIndex, rowSpan))}>
         <span className="text-xs font-semibold">행−</span>
       </ToolButton>
       <ToolButton label={`열 삽입 (${colSpan}개)`} disabled={!selection}
-        onClick={() => store().insertCols(sid(), colIndex, colSpan)}>
+        onClick={() => structural(store().insertCols(sid(), colIndex, colSpan))}>
         <span className="text-xs font-semibold">열+</span>
       </ToolButton>
       <ToolButton label={`열 삭제 (${colSpan}개)`} disabled={!selection}
-        onClick={() => store().deleteCols(sid(), colIndex, colSpan)}>
+        onClick={() => structural(store().deleteCols(sid(), colIndex, colSpan))}>
         <span className="text-xs font-semibold">열−</span>
       </ToolButton>
       <Separator orientation="vertical" className="mx-1 h-5" />

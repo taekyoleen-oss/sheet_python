@@ -62,7 +62,7 @@ describe("recalcAfter — 연쇄·부분 재계산", () => {
     expect(recalcAfter(wb, [at(sid, 0, 0)])).toEqual([]);
   });
 
-  it("순환: 구성원 전부 #CIRC!, 하류 수식은 #VALUE!", () => {
+  it("순환: 구성원 전부 #CIRC!, 하류 수식은 오류 전파(#CIRC!)", () => {
     const { wb, sid } = wbWith({
       "0:1": { v: 0, t: "n", fx: "=C1+1" }, // B1 → C1
       "0:2": { v: 0, t: "n", fx: "=B1+1" }, // C1 → B1 (순환)
@@ -71,7 +71,7 @@ describe("recalcAfter — 연쇄·부분 재계산", () => {
     recalcAfter(wb, [at(sid, 0, 1)]);
     expect(wb.sheets[0].cells["0:1"]).toMatchObject({ v: "#CIRC!", t: "e" });
     expect(wb.sheets[0].cells["0:2"]).toMatchObject({ v: "#CIRC!", t: "e" });
-    expect(wb.sheets[0].cells["0:3"]).toMatchObject({ v: "#VALUE!", t: "e" });
+    expect(wb.sheets[0].cells["0:3"]).toMatchObject({ v: "#CIRC!", t: "e" });
   });
 
   it("자기 참조도 #CIRC!", () => {

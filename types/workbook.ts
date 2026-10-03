@@ -134,12 +134,21 @@ export interface WorkbookSettings {
   inferTypesOnPaste: boolean;
 }
 
+/** 정의된 이름 (부록 O.4) — 수식에서 `=SUM(보험료)`처럼 쓴다. ref는 시트 접두어 포함 절대 참조 */
+export interface DefinedName {
+  name: string;
+  /** 예: "Sheet1!$A$2:$A$100" */
+  ref: string;
+}
+
 export interface Workbook {
   id: string;
   /** 스키마 버전 (마이그레이션용) */
   version: 1;
   title: string;
   sheets: Sheet[];
+  /** 정의된 이름 (선택 필드 — 기존 워크북 호환) */
+  names?: DefinedName[];
   pyBlocks: PyBlock[];
   initScript: string;
   calcMode: CalcMode;

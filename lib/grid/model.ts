@@ -21,7 +21,17 @@ import {
   type Workbook,
 } from "@/types/workbook";
 import { colToLetter } from "./a1";
-import { recalcAfter, type SheetRange } from "./formula-engine";
+import {
+  adjustForStructure,
+  FORMULA_FUNCTIONS,
+  moveRefsInFormula,
+  NAME_RE,
+  parseRefText,
+  renameSheetInFormula,
+  rewriteXlRefs,
+  type StructureEdit,
+} from "./formula";
+import { recalcAfter, rewriteAllFormulas, type SheetRange } from "./formula-engine";
 import { markdownTitle } from "./markdown";
 import {
   newId,
@@ -128,6 +138,81 @@ function recalcFormulas(wb: Workbook, edited: SheetRange[] | "all"): void {
   }
 }
 
+/** 행/열 삽입·삭제에 따른 한 점(앵커)의 새 위치 — 지워진 행/열 위의 점은 삭제 위치로 당겨진다 */
+function shiftPoint(p: { r: number; c: number }, ed: StructureEdit): { r: number; c: number } {
+  const key = ed.axis === "row" ? "r" : "c";
+  const v = p[key];
+  let nv = v;
+  if (ed.count > 0) nv = v >= ed.index ? v + ed.count : v;
+  else {
+    const n = -ed.count;
+    nv = v < ed.index ? v : v < ed.index + n ? ed.index : v - n;
+  }
+  return { ...p, [key]: nv };
+}
+
+/**
+ * 부록 O.2·O.4: 행/열 삽입·삭제 시 (셀 이동 전에 호출)
+ * - 모든 시트 수식 참조·정의된 이름을 엑셀처럼 조정
+ * - Python 블록·출력 앵커를 함께 이동, 코드 안 `xl("…")` 참조도 같은 규칙으로 재작성
+ * 반환: 바뀐 블록 id (dirty 표시됨 — 호출부가 재실행 통지)
+ */
+function applyStructure(state: WorkbookState, ed: StructureEdit): string[] {
+  const wb = state.workbook;
+  rewriteAllFormulas(wb, (fx, own) => adjustForStructure(fx, own, ed));
+  for (const n of wb.names ?? []) n.ref = adjustForStructure(`=${n.ref}`, ed.sheetName, ed).slice(1);
+  const sheetId = wb.sheets.find((s) => s.name === ed.sheetName)?.id;
+  const nameOf = new Map(wb.sheets.map((s) => [s.id, s.name]));
+  const changed: string[] = [];
+  for (const b of wb.pyBlocks) {
+    let hit = false;
+    const move = (p: { r: number; c: number }) => {
+      const q = shiftPoint(p, ed);
+      if (q.r !== p.r || q.c !== p.c) {
+        p.r = q.r;
+        p.c = q.c;
+        hit = true;
+      }
+    };
+    if (b.sheetId === sheetId) {
+      move(b.anchor);
+      if (b.last?.spillRange) delete b.last.spillRange;
+    }
+    for (const o of b.outputs ?? []) {
+      if ((o.sheetId ?? b.sheetId) !== sheetId) continue;
+      move(o.anchor);
+      if (o.last?.spillRange) {
+        delete o.last.spillRange; // spill 셀은 함께 이동했다 — 테두리는 재실행 때 다시 잡힌다
+        hit = true;
+      }
+    }
+    if (b.kind !== "markdown") {
+      const own = nameOf.get(b.sheetId) ?? ed.sheetName;
+      const code = rewriteXlRefs(b.code, (ref) => adjustForStructure(`=${ref}`, own, ed).slice(1));
+      if (code !== b.code) {
+        b.code = code;
+        hit = true;
+      }
+    }
+    if (hit) {
+      changed.push(b.id);
+      state.dirtyBlocks[b.id] = true;
+    }
+  }
+  return changed;
+}
+
+/** 정의된 이름 검증 — 문제가 있으면 한국어 사유 */
+export function nameProblem(name: string, ref: string): string | null {
+  if (!NAME_RE.test(name)) return "이름은 글자·밑줄로 시작하고 글자·숫자·밑줄·마침표만 쓸 수 있습니다";
+  if (/^[A-Za-z]{1,3}\d+$/.test(name)) return "셀 주소처럼 보이는 이름은 쓸 수 없습니다";
+  if (/^(TRUE|FALSE)$/i.test(name) || FORMULA_FUNCTIONS.includes(name.toUpperCase()))
+    return "예약어·함수 이름은 쓸 수 없습니다";
+  const p = parseRefText(ref);
+  if (!p || p.sheetName === undefined) return "참조는 시트 이름을 포함해야 합니다 (예: Sheet1!$A$1:$A$10)";
+  return null;
+}
+
 /**
  * 지정 출력(outputId 생략 시 블록 전체)의 spill 셀 제거 — 다른 시트 출력까지 훑는다.
  * 반환: 지워진 셀의 시트별 경계 상자 (수식 재계산 대상)
@@ -170,6 +255,18 @@ export function cellTaken(sheet: Sheet, blocks: PyBlock[], r: number, c: number)
         (o) => (o.sheetId ?? b.sheetId) === sheet.id && o.anchor.r === r && o.anchor.c === c,
       ),
   );
+}
+
+/** 블록 출력 영역(기존 출력·spill) 오른쪽 두 칸부터 처음 비어 있는 열 */
+function freeOutputCol(sheet: Sheet, blocks: PyBlock[], block: PyBlock): number {
+  let c = block.anchor.c;
+  for (const o of block.outputs ?? []) {
+    if ((o.sheetId ?? block.sheetId) !== sheet.id) continue;
+    c = Math.max(c, Math.max(o.anchor.c, o.last?.spillRange?.c1 ?? o.anchor.c) + 2);
+  }
+  const limit = c + 200;
+  while (c < limit && cellTaken(sheet, blocks, block.anchor.r, c)) c++;
+  return c;
 }
 
 export interface WorkbookState {
@@ -217,10 +314,19 @@ export interface WorkbookState {
   /** 일괄 편집 = 한 트랜잭션 = 한 undo 단계 */
   setCells: (sheetId: string, edits: CellEdit[]) => void;
   clearRange: (sheetId: string, range: CellRange) => void;
-  insertRows: (sheetId: string, index: number, count: number) => void;
-  insertCols: (sheetId: string, index: number, count: number) => void;
-  deleteRows: (sheetId: string, index: number, count: number) => void;
-  deleteCols: (sheetId: string, index: number, count: number) => void;
+  /** 행/열 삽입·삭제 — 수식·이름·블록 앵커·xl() 참조 조정까지 한 트랜잭션. 반환: 바뀐 블록 id */
+  insertRows: (sheetId: string, index: number, count: number) => string[];
+  insertCols: (sheetId: string, index: number, count: number) => string[];
+  deleteRows: (sheetId: string, index: number, count: number) => string[];
+  deleteCols: (sheetId: string, index: number, count: number) => string[];
+  /**
+   * 부록 O.4 잘라내기 이동: src 범위를 dest로 옮긴다. 옮긴 셀을 가리키던 모든 수식·이름이 따라간다.
+   * spill 셀이 끼면 아무것도 바꾸지 않고 한국어 사유를 반환한다.
+   */
+  moveRange: (sheetId: string, src: CellRange, dest: { r: number; c: number }) => string | null;
+  /** 부록 O.4 이름 정의 (같은 이름이면 교체) — 문제가 있으면 한국어 사유 */
+  defineName: (name: string, ref: string) => string | null;
+  removeName: (name: string) => void;
   addSheet: () => void;
   /** 새 시트 생성 + 셀 채우기를 한 트랜잭션(= 한 undo 단계)으로 */
   addSheetWithCells: (edits: CellEdit[]) => void;
@@ -265,6 +371,15 @@ export interface WorkbookState {
   setBlockOutput: (id: string, patch: OutputSelection) => void;
   /** 출력 추가 — 블록 근처 빈 셀에 기본 바인딩(마지막 표현식·값 모드). 반환: 새 출력 id */
   addOutput: (blockId: string) => string | null;
+  /**
+   * 부록 O.5: 출력 여러 개를 한 트랜잭션(= 한 undo 단계)으로 추가 — 모델 결과 보내기.
+   * start가 없으면 블록 출력 영역 오른쪽 빈 칸부터, 각 출력은 width+1칸 간격으로 가로 배치.
+   */
+  addOutputs: (
+    blockId: string,
+    specs: { selection: OutputSelection; label: string; width: number }[],
+    start?: { sheetId: string; r: number; c: number },
+  ) => string[];
   /** 출력 삭제 — 그 출력의 spill 셀을 같은 트랜잭션에서 지운다. 마지막 하나는 거부 */
   removeOutput: (blockId: string, outputId: string) => void;
   /**
@@ -408,13 +523,13 @@ export const createWorkbookStore = () => {
         /** edited가 있으면 같은 트랜잭션에서 수식 재계산 (부록 I.2 — 공통 후처리 지점) */
         const mutateSheet = (
           sheetId: string,
-          fn: (sheet: Sheet) => void,
+          fn: (sheet: Sheet, wb: Workbook, state: WorkbookState) => void,
           edited?: CellRange[] | "all",
         ) =>
           set((state) => {
             const sheet = state.workbook.sheets.find((s) => s.id === sheetId);
             if (!sheet) return;
-            fn(sheet);
+            fn(sheet, state.workbook, state);
             if (edited !== undefined) {
               recalcFormulas(
                 state.workbook,
@@ -495,29 +610,39 @@ export const createWorkbookStore = () => {
               [range],
             ),
 
-          insertRows: (sheetId, index, count) =>
-            mutateSheet(sheetId, (sh) => {
+          insertRows: (sheetId, index, count) => {
+            let changed: string[] = [];
+            mutateSheet(sheetId, (sh, _wb, st) => {
               if (count <= 0) return;
+              changed = applyStructure(st, { sheetName: sh.name, axis: "row", index, count: count });
               sh.rowCount += count;
               sh.cells = remapCells(sh.cells, (r, c) =>
                 r >= index ? [r + count, c] : [r, c],
               );
-            }, "all"),
+            }, "all");
+            return changed;
+          },
 
-          deleteRows: (sheetId, index, count) =>
-            mutateSheet(sheetId, (sh) => {
+          deleteRows: (sheetId, index, count) => {
+            let changed: string[] = [];
+            mutateSheet(sheetId, (sh, _wb, st) => {
               if (count <= 0) return;
+              changed = applyStructure(st, { sheetName: sh.name, axis: "row", index, count: -count });
               sh.rowCount = Math.max(1, sh.rowCount - count);
               sh.cells = remapCells(sh.cells, (r, c) => {
                 if (r < index) return [r, c];
                 if (r < index + count) return null;
                 return [r - count, c];
               });
-            }, "all"),
+            }, "all");
+            return changed;
+          },
 
-          insertCols: (sheetId, index, count) =>
-            mutateSheet(sheetId, (sh) => {
+          insertCols: (sheetId, index, count) => {
+            let changed: string[] = [];
+            mutateSheet(sheetId, (sh, _wb, st) => {
               if (count <= 0) return;
+              changed = applyStructure(st, { sheetName: sh.name, axis: "col", index, count: count });
               sh.colCount += count;
               sh.cells = remapCells(sh.cells, (r, c) =>
                 c >= index ? [r, c + count] : [r, c],
@@ -525,11 +650,15 @@ export const createWorkbookStore = () => {
               sh.colWidths = remapWidths(sh.colWidths, (c) =>
                 c >= index ? c + count : c,
               );
-            }, "all"),
+            }, "all");
+            return changed;
+          },
 
-          deleteCols: (sheetId, index, count) =>
-            mutateSheet(sheetId, (sh) => {
+          deleteCols: (sheetId, index, count) => {
+            let changed: string[] = [];
+            mutateSheet(sheetId, (sh, _wb, st) => {
               if (count <= 0) return;
+              changed = applyStructure(st, { sheetName: sh.name, axis: "col", index, count: -count });
               sh.colCount = Math.max(1, sh.colCount - count);
               sh.cells = remapCells(sh.cells, (r, c) => {
                 if (c < index) return [r, c];
@@ -545,7 +674,75 @@ export const createWorkbookStore = () => {
                 // setFrozenCols와 같은 불변식: 최대 colCount - 1
                 sh.frozenCols = Math.min(sh.frozenCols, sh.colCount - 1);
               }
-            }, "all"),
+            }, "all");
+            return changed;
+          },
+
+          moveRange: (sheetId, srcRange, dest) => {
+            const st = get();
+            const sheet = st.workbook.sheets.find((s) => s.id === sheetId);
+            if (!sheet) return "시트를 찾을 수 없습니다";
+            const src = norm(srcRange);
+            const dr = dest.r - src.r0;
+            const dc = dest.c - src.c0;
+            if (dr === 0 && dc === 0) return null;
+            const target = {
+              r0: dest.r,
+              c0: dest.c,
+              r1: dest.r + src.r1 - src.r0,
+              c1: dest.c + src.c1 - src.c0,
+            };
+            for (const rg of [src, target])
+              for (let r = rg.r0; r <= rg.r1; r++)
+                for (let c = rg.c0; c <= rg.c1; c++)
+                  if (sheet.cells[cellKey(r, c)]?.src)
+                    return "Python 출력(spill) 셀은 잘라내거나 덮어쓸 수 없습니다";
+            mutateSheet(
+              sheetId,
+              (sh, wb) => {
+                const move = (fx: string, own: string) =>
+                  moveRefsInFormula(fx, own, sh.name, src, dr, dc);
+                rewriteAllFormulas(wb, move);
+                for (const n of wb.names ?? []) n.ref = move(`=${n.ref}`, sh.name).slice(1);
+                const moved: [number, number, Cell][] = [];
+                for (let r = src.r0; r <= src.r1; r++)
+                  for (let c = src.c0; c <= src.c1; c++) {
+                    const key = cellKey(r, c);
+                    if (sh.cells[key]) moved.push([r + dr, c + dc, sh.cells[key]]);
+                    delete sh.cells[key];
+                  }
+                for (let r = target.r0; r <= target.r1; r++)
+                  for (let c = target.c0; c <= target.c1; c++) delete sh.cells[cellKey(r, c)];
+                for (const [r, c, cell] of moved) sh.cells[cellKey(r, c)] = cell;
+                sh.rowCount = Math.max(sh.rowCount, target.r1 + 1);
+                sh.colCount = Math.max(sh.colCount, target.c1 + 1);
+              },
+              [src, target],
+            );
+            return null;
+          },
+
+          defineName: (name, ref) => {
+            const trimmed = name.trim();
+            const problem = nameProblem(trimmed, ref);
+            if (problem) return problem;
+            set((state) => {
+              const list = (state.workbook.names ??= []);
+              const i = list.findIndex((n) => n.name.toUpperCase() === trimmed.toUpperCase());
+              if (i >= 0) list[i] = { name: trimmed, ref };
+              else list.push({ name: trimmed, ref });
+              recalcFormulas(state.workbook, "all");
+            });
+            return null;
+          },
+
+          removeName: (name) =>
+            set((state) => {
+              const list = state.workbook.names;
+              if (!list) return;
+              state.workbook.names = list.filter((n) => n.name !== name);
+              recalcFormulas(state.workbook, "all");
+            }),
 
           addSheet: () =>
             set((state) => {
@@ -581,7 +778,21 @@ export const createWorkbookStore = () => {
             // 이름 참조("Sheet2!A1") 해석이 바뀌므로 전체 재계산
             mutateSheet(
               sheetId,
-              (sh) => {
+              (sh, wb, st) => {
+                if (sh.name === trimmed) return;
+                const from = sh.name;
+                const ren = (fx: string) => renameSheetInFormula(fx, from, trimmed);
+                rewriteAllFormulas(wb, ren);
+                for (const n of wb.names ?? []) n.ref = ren(`=${n.ref}`).slice(1);
+                // 코드의 xl("Sheet2!A1")도 새 이름을 따라간다 (부록 O.4)
+                for (const b of wb.pyBlocks) {
+                  if (b.kind === "markdown") continue;
+                  const code = rewriteXlRefs(b.code, (ref) => ren(`=${ref}`).slice(1));
+                  if (code !== b.code) {
+                    b.code = code;
+                    st.dirtyBlocks[b.id] = true;
+                  }
+                }
                 sh.name = trimmed;
               },
               "all",
@@ -860,15 +1071,8 @@ export const createWorkbookStore = () => {
             if (!block || block.kind === "markdown") return null;
             const sheet = st.workbook.sheets.find((s) => s.id === block.sheetId);
             if (!sheet) return null;
-            // 기존 출력 영역 오른쪽 두 칸부터 빈 셀을 찾는다
-            let c = block.anchor.c;
-            for (const o of block.outputs ?? []) {
-              if ((o.sheetId ?? block.sheetId) !== sheet.id) continue;
-              c = Math.max(c, Math.max(o.anchor.c, o.last?.spillRange?.c1 ?? o.anchor.c) + 2);
-            }
             const r = block.anchor.r;
-            const limit = c + 200;
-            while (c < limit && cellTaken(sheet, st.workbook.pyBlocks, r, c)) c++;
+            const c = freeOutputCol(sheet, st.workbook.pyBlocks, block);
             const id = newId();
             set((state) => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
@@ -882,6 +1086,38 @@ export const createWorkbookStore = () => {
               state.dirtyBlocks[blockId] = true;
             });
             return id;
+          },
+
+          addOutputs: (blockId, specs, start) => {
+            const st = get();
+            const block = st.workbook.pyBlocks.find((b) => b.id === blockId);
+            if (!block || block.kind === "markdown" || specs.length === 0) return [];
+            const sheetId = start?.sheetId ?? block.sheetId;
+            const sheet = st.workbook.sheets.find((s) => s.id === sheetId);
+            if (!sheet) return [];
+            const r = start ? start.r : block.anchor.r;
+            let c = start ? start.c : freeOutputCol(sheet, st.workbook.pyBlocks, block);
+            const ids: string[] = [];
+            set((state) => {
+              const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
+              if (!b) return;
+              for (const spec of specs) {
+                const id = newId();
+                ids.push(id);
+                (b.outputs ??= []).push({
+                  id,
+                  ...(sheetId === b.sheetId ? {} : { sheetId }),
+                  anchor: { r, c },
+                  mode: "values",
+                  includeIndex: "auto",
+                  selection: spec.selection,
+                  label: spec.label,
+                });
+                c += Math.max(1, spec.width) + 1; // 한 칸 띄워 다음 출력
+              }
+              state.dirtyBlocks[blockId] = true;
+            });
+            return ids;
           },
 
           removeOutput: (blockId, outputId) =>

@@ -106,16 +106,16 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
   expect((await cellAt(page, "0:3"))?.v).toBe("a"); // D1 헤더
   expect((await cellAt(page, "5:4"))?.v).toBe(50); // E6 마지막 값
 
-  // ── 2) 출력 위치 지정(출력 행의 주소 버튼) → F10으로 앵커 이동
+  // ── 2) 출력 위치 지정(출력 행의 주소 버튼) → F8으로 앵커 이동
   const codeCard = page.locator('[data-block-kind="code"]');
   await codeCard.getByRole("button", { name: "출력 1 위치" }).click();
   await expect(page.getByText("결과를 놓을 셀을 클릭하세요")).toBeVisible();
-  await clickCell(page, cal, 9, 5); // F10
-  expect((await block0(page)).anchor).toEqual({ r: 9, c: 5 });
+  await clickCell(page, cal, 7, 5); // F8
+  expect((await block0(page)).anchor).toEqual({ r: 7, c: 5 });
   expect(await cellAt(page, "0:3")).toBeNull(); // 옛 앵커 비워짐
   await expect
-    .poll(async () => (await cellAt(page, "9:5"))?.v, { timeout: 90_000, intervals: [500] })
-    .toBe("a"); // 자동 모드 재실행 → F10에 새 spill
+    .poll(async () => (await cellAt(page, "7:5"))?.v, { timeout: 90_000, intervals: [500] })
+    .toBe("a"); // 자동 모드 재실행 → F8에 새 spill
   expect(await srcCount(page)).toBe(12);
   expect(await cellAt(page, "5:4")).toBeNull(); // 옛 spill 전부 제거
 
@@ -126,7 +126,7 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
   await expect
     .poll(() => srcCount(page), { timeout: 90_000, intervals: [500] })
     .toBe(18);
-  expect((await cellAt(page, "9:7"))?.v).toBe("c"); // H10: assign으로 생긴 열
+  expect((await cellAt(page, "7:7"))?.v).toBe("c"); // H8: assign으로 생긴 열
   expect((await block0(page)).output).toEqual({ variable: "wide" });
 
   // ── 4) 열 a만 + 상위 3행 → 4행 × 1열
@@ -143,10 +143,10 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
     columns: ["a"],
     rowLimit: 3,
   });
-  expect((await cellAt(page, "9:5"))?.v).toBe("a"); // 헤더
-  expect((await cellAt(page, "12:5"))?.v).toBe(3); // 상위 3행의 마지막
-  expect(await cellAt(page, "13:5")).toBeNull(); // 4번째 행은 없다
-  expect(await cellAt(page, "9:6")).toBeNull(); // b 열은 없다
+  expect((await cellAt(page, "7:5"))?.v).toBe("a"); // 헤더
+  expect((await cellAt(page, "10:5"))?.v).toBe(3); // 상위 3행의 마지막
+  expect(await cellAt(page, "11:5")).toBeNull(); // 4번째 행은 없다
+  expect(await cellAt(page, "7:6")).toBeNull(); // b 열은 없다
 
   // ── 5) 마크다운 블록 — 앵커 셀에 아무것도 쓰지 않는다
   await page.evaluate(() => {
@@ -178,7 +178,7 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
   // 항목 버튼은 exact — hover 액션이 "<이름> 실행"·"<이름> 메뉴"로 함께 잡히기 때문
   const tocEntry = toc.getByRole("button", { name: "분석 개요", exact: true });
   await expect(tocEntry).toBeVisible();
-  await expect(toc.getByRole("button", { name: "F10", exact: true })).toBeVisible(); // 코드 블록 = 앵커 주소
+  await expect(toc.getByRole("button", { name: "F8", exact: true })).toBeVisible(); // 코드 블록 = 앵커 주소
 
   // 헤딩 계층 = 단계별 들여쓰기, 3단계부터 · 접두
   const padOf = (name: string) =>
@@ -188,7 +188,7 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
   expect(await padOf("분석 개요")).toBe("6px"); // #
   expect(await padOf("데이터")).toBe("18px"); // ##
   expect(await padOf("세부")).toBe("30px"); // ###
-  expect(await padOf("F10")).toBe("42px"); // 코드 블록은 직전 헤딩 아래 한 단계
+  expect(await padOf("F8")).toBe("42px"); // 코드 블록은 직전 헤딩 아래 한 단계
   await expect(toc.getByRole("button", { name: "세부", exact: true })).toContainText("·");
 
   await tocEntry.click();
@@ -233,7 +233,7 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
         .getState()
         .workbook.pyBlocks.find((b: any) => b.kind === "markdown").anchor,
   );
-  expect(mdBefore).toEqual({ r: 0, c: 9 }); // J1 — 계산 순서상 코드 블록(F10)보다 앞
+  expect(mdBefore).toEqual({ r: 0, c: 9 }); // J1 — 계산 순서상 코드 블록(F8)보다 앞
   await codeCard.getByRole("button", { name: "위로" }).click();
 
   expect((await block0(page)).anchor).toEqual({ r: 0, c: 9 }); // 코드 → J1
@@ -244,8 +244,8 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
           .getState()
           .workbook.pyBlocks.find((b: any) => b.kind === "markdown").anchor,
     ),
-  ).toEqual({ r: 9, c: 5 }); // 마크다운 → F10
-  expect(await cellAt(page, "9:5")).toBeNull(); // 옛 자리의 spill 제거
+  ).toEqual({ r: 7, c: 5 }); // 마크다운 → F8
+  expect(await cellAt(page, "7:5")).toBeNull(); // 옛 자리의 spill 제거
   await expect
     .poll(async () => (await cellAt(page, "0:9"))?.v, { timeout: 90_000, intervals: [500] })
     .toBe("a"); // 자동 모드: 새 앵커에서 재실행
@@ -294,7 +294,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   expect((await cellAt(page, "0:3"))?.v).toBe("a"); // D1
   expect((await cellAt(page, "5:4"))?.v).toBe(50); // E6
 
-  // 출력 #2 추가 → 기본은 블록 옆 빈 셀, 여기서는 G10으로 지정
+  // 출력 #2 추가 → 기본은 블록 옆 빈 셀, 여기서는 G8으로 지정
   const codeCard = page.locator('[data-block-kind="code"]');
   await codeCard.getByRole("button", { name: "출력 추가" }).click();
   expect(
@@ -304,18 +304,18 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   ).toBe(2);
   await codeCard.getByRole("button", { name: "출력 2 위치" }).click();
   await expect(page.getByText("결과를 놓을 셀을 클릭하세요")).toBeVisible();
-  await clickCell(page, cal, 9, 6); // G10
-  expect((await block0(page)).outputs[1].anchor).toEqual({ r: 9, c: 6 });
+  await clickCell(page, cal, 7, 6); // G8
+  expect((await block0(page)).outputs[1].anchor).toEqual({ r: 7, c: 6 });
 
   // 출력 #2 변수 = total → 1×1 스칼라. 코드는 한 번만 실행되고 두 영역이 각각 채워진다
   await page.getByLabel("출력 2 변수").click();
   await expect(page.getByRole("option", { name: "total" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("option", { name: "total" }).click();
   await expect
-    .poll(async () => (await cellAt(page, "9:6"))?.v, { timeout: 90_000, intervals: [500] })
+    .poll(async () => (await cellAt(page, "7:6"))?.v, { timeout: 90_000, intervals: [500] })
     .toBe(15); // 1+2+3+4+5
   expect(await outputCellCount(page, 0)).toBe(12); // 출력 #1 = D1:E6 그대로
-  expect(await outputCellCount(page, 1)).toBe(1); // 출력 #2 = G10 한 칸
+  expect(await outputCellCount(page, 1)).toBe(1); // 출력 #2 = G8 한 칸
   expect((await cellAt(page, "0:3"))?.v).toBe("a");
   expect((await cellAt(page, "5:4"))?.v).toBe(50);
 
@@ -325,7 +325,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
     const b = st.workbook.pyBlocks[0];
     return {
       out1: st.workbook.sheets[0].cells["0:3"].src,
-      out2: st.workbook.sheets[0].cells["9:6"].src,
+      out2: st.workbook.sheets[0].cells["7:6"].src,
       ids: b.outputs.map((o: any) => `${b.id}:${o.id}`),
     };
   });
@@ -336,7 +336,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   await page.getByLabel("출력 2 변수").click();
   await page.getByRole("option", { name: "avg" }).click();
   await expect
-    .poll(async () => (await cellAt(page, "9:6"))?.v, { timeout: 90_000, intervals: [500] })
+    .poll(async () => (await cellAt(page, "7:6"))?.v, { timeout: 90_000, intervals: [500] })
     .toBe(30); // (10+20+30+40+50)/5
   expect((await cellAt(page, "0:3"))?.v).toBe("a"); // 출력 #1 영역은 그대로
   expect((await cellAt(page, "5:4"))?.v).toBe(50);
@@ -349,7 +349,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   );
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
-    .poll(async () => (await cellAt(page, "9:6"))?.v, { timeout: 90_000, intervals: [500] })
+    .poll(async () => (await cellAt(page, "7:6"))?.v, { timeout: 90_000, intervals: [500] })
     .toBe("#PYTHON!");
   expect((await cellAt(page, "0:3"))?.v).toBe("a"); // 출력 #1은 정상 유지
 
@@ -365,7 +365,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
 
   // 출력 삭제 → 그 영역만 비워진다
   await codeCard.getByRole("button", { name: "출력 2 삭제" }).click();
-  expect(await cellAt(page, "9:6")).toBeNull();
+  expect(await cellAt(page, "7:6")).toBeNull();
   expect(await outputCellCount(page, 0)).toBe(12);
   await expect(codeCard.getByRole("button", { name: "출력 1 삭제" })).toBeDisabled();
 });
