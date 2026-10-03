@@ -256,10 +256,7 @@ def _pygrid_convert_one(last, req):
         value = last
         variable = sel.get("variable")
         if variable:
-            g = globals()
-            if variable not in g:
-                raise NameError(f"출력 변수 '{variable}'가 정의되지 않았습니다")
-            value = g[variable]
+            value = _pygrid_resolve(variable)  # 변수명 또는 출력 식 (부록 O.5)
         value = _pygrid_select_output(value, sel)
     except KeyboardInterrupt:
         raise

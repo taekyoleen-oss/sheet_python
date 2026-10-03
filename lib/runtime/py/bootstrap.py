@@ -58,10 +58,22 @@ def _pygrid_exec_capture(code, variable=None):
     if last is not None:
         value = eval(compile(ast.Expression(last.value), "<pygrid>", "eval"), g)
     if variable:
-        if variable not in g:
-            raise NameError(f"출력 변수 '{variable}'가 정의되지 않았습니다")
-        return g[variable]
+        return _pygrid_resolve(variable)
     return value
+
+
+def _pygrid_resolve(selector):
+    """출력 선택 → 값. 변수명이면 전역 조회, 아니면 식으로 평가한다(부록 O.5).
+
+    식 예: `model.rsquared`, `_pygrid_coef_table(model)`, `_pygrid_predict(model, test)`.
+    사용자 코드와 같은 전역에서 평가하므로 블록 코드 이상의 권한은 없다.
+    """
+    g = globals()
+    if selector.isidentifier():
+        if selector not in g:
+            raise NameError(f"출력 변수 '{selector}'가 정의되지 않았습니다")
+        return g[selector]
+    return eval(compile(selector, "<pygrid>", "eval"), g)
 
 
 def _pygrid_format_exc(e):
@@ -125,6 +137,19 @@ def _pygrid_inspect():
             info["summary"] = repr(v)[:80]
         except Exception:
             info["summary"] = "<repr 실패>"
+        # 부록 O.5: 표는 열 이름(목표 열 선택용), 적합된 모델은 시트로 보낼 항목 카탈로그
+        cols = getattr(v, "columns", None)
+        if info.get("shape") and cols is not None:
+            try:
+                info["columns"] = [str(c) for c in list(cols)[:500]]
+            except Exception:
+                pass
+        try:
+            model = _pygrid_model_info(name, v)
+            if model:
+                info["model"] = model
+        except Exception:
+            pass  # 카탈로그 실패가 변수 목록을 막지 않는다
         out.append(info)
     return json.dumps(out, ensure_ascii=False, default=str)
 

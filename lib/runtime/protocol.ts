@@ -105,6 +105,40 @@ export interface VariableInfo {
   shape?: [number, number];
   /** repr 첫 줄 등 짧은 요약 */
   summary?: string;
+  /** 2차원 표(DataFrame)의 열 이름 — 최대 500개 (부록 O.5 목표 열 선택) */
+  columns?: string[];
+  /** 적합된 모델(statsmodels 결과·scikit-learn 추정기)이면 시트로 보낼 항목 카탈로그 */
+  model?: ModelInfo;
+}
+
+/** 시트로 보낼 수 있는 모델 항목 하나 — 모델 종류에 따라 목록이 달라진다(부록 O.5) */
+export interface ModelMember {
+  /** 묶음 (요약표·적합 통계·계수·추론·적합값·잔차·교차검증·군집 …) */
+  group: string;
+  label: string;
+  /** OutputSelection.variable에 그대로 들어가는 출력 식 (블록 전역에서 평가) */
+  expr: string;
+  /** 사용자에게 보여 주는 라이브러리 원래 코드 (코드로 옮겨 쓸 때) */
+  code: string;
+  /** 현재 값 미리보기 (스칼라는 값, 표·벡터는 크기와 앞부분) */
+  preview: string;
+  /** 예상 spill 크기 [행, 열] (index 포함 추정치 — 배치 간격 계산용) */
+  shape: [number, number];
+}
+
+export interface ModelInfo {
+  kind: "statsmodels" | "sklearn";
+  /** 공식(formula) API로 적합 — 예측 데이터에 원본 열 이름만 있으면 된다 */
+  formula: boolean;
+  /** 신뢰·예측구간 지원 (statsmodels get_prediction) */
+  intervals: boolean;
+  /** predict 지원 (PCA 등 비지도 변환기는 없다) */
+  predict: boolean;
+  /** 클래스 확률 predict_proba 지원 (분류 모델) */
+  proba: boolean;
+  /** scikit-learn 모델이 열 이름(feature_names_in_)으로 학습됨 */
+  featureNames: boolean;
+  members: ModelMember[];
 }
 
 // ── 메인 → 워커 ──────────────────────────────────────────

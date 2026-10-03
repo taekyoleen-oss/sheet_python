@@ -15,6 +15,7 @@ import {
 } from "../lib/runtime/protocol";
 import bootstrapPy from "../lib/runtime/py/bootstrap.py";
 import convertPy from "../lib/runtime/py/convert.py";
+import modelOutPy from "../lib/runtime/py/model_out.py";
 import xlPy from "../lib/runtime/py/xl.py";
 
 // tsconfig lib이 dom이므로 webworker 전역을 좁은 타입으로 캐스팅해 쓴다
@@ -153,6 +154,7 @@ async function boot(msg: Extract<MainToWorker, { t: "boot" }>): Promise<void> {
     py.runPython(bootstrapPy);
     py.runPython(xlPy);
     py.runPython(convertPy);
+    py.runPython(modelOutPy);
 
     post({ t: "progress", pct: 90, label: "초기화 스크립트" });
     pyodide = py;

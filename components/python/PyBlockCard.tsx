@@ -10,6 +10,7 @@ import {
   ArrowUp,
   CaretDown,
   CaretRight,
+  ChartLineUp,
   DotsThreeVertical,
   Eye,
   NotePencil,
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { AiAssist } from "@/components/python/AiAssist";
 import CodeEditor from "@/components/python/CodeEditor";
+import ModelResultDialog from "@/components/python/ModelResultDialog";
 import { formatA1 } from "@/lib/grid/a1";
 import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { codeTitle } from "@/lib/grid/code-sections";
@@ -353,6 +355,7 @@ function OutputRow({
 /** 출력 목록 — 한 블록의 결과를 여러 셀에 나눠 놓는다 (부록 D.1) */
 function OutputList({ block }: { block: PyBlock }) {
   const outputs = outputsOf(block);
+  const [modelOpen, setModelOpen] = useState(false);
   return (
     // 카드 내부 밴드 구분: 출력 설정은 옅은 muted 배경 + 상하 경계 (설명·코드와 시각 분리)
     <div data-testid="output-list" className="border-y bg-muted/25">
@@ -377,6 +380,18 @@ function OutputList({ block }: { block: PyBlock }) {
         >
           <Plus className="size-3" /> 출력 추가
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-primary"
+          onClick={() => setModelOpen(true)}
+          title="적합한 모델의 계수·결정계수·예측값을 골라 셀에 놓습니다 (부록 O.5)"
+        >
+          <ChartLineUp className="size-3" /> 모델 결과 → 시트
+        </Button>
+        {modelOpen && (
+          <ModelResultDialog block={block} open={modelOpen} onOpenChange={setModelOpen} />
+        )}
       </div>
     </div>
   );
