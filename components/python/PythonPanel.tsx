@@ -170,14 +170,18 @@ export default function PythonPanel() {
             (Ctrl+Shift+P)
           </p>
         ) : (
-          blocks.map((block, i) => (
-            <PyBlockCard
-              key={block.id}
-              block={block}
-              isFirst={i === 0}
-              isLast={i === blocks.length - 1}
-            />
-          ))
+          <>
+            {blocks.map((block, i) => (
+              <PyBlockCard
+                key={block.id}
+                block={block}
+                isFirst={i === 0}
+                isLast={i === blocks.length - 1}
+              />
+            ))}
+            {/* 노트북식 끝 여백 — 마지막 카드도 상단 기준으로 맞출 수 있게 */}
+            <div aria-hidden className="h-[70vh]" />
+          </>
         )}
       </div>
       <RefInsertBar />

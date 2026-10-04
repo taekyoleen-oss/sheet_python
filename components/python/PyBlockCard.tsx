@@ -645,14 +645,17 @@ export default function PyBlockCard({
     codeRef.current = block.code;
   }, [block.code]);
 
-  // 목차·블록으로 이동 → 카드 노출 (코드 블록은 CodeEditor가 포커스까지 처리)
+  // 목차·블록으로 이동 → 카드를 펼치고 카드 상단을 화면 상단에 맞춘다
+  // (코드 블록 포커스는 CodeEditor가 스크롤 없이 처리 — 자식 effect가 먼저 돌고 이 정렬이 마지막)
   useEffect(() => {
     if (!focusRequested) return;
-    cardRef.current?.scrollIntoView({ block: "nearest" });
+    if (collapsed) store().setBlockCollapsed(block.id, false);
+    cardRef.current?.scrollIntoView({ block: "start" });
     if (isMarkdown) {
-      mdRef.current?.focus();
+      mdRef.current?.focus({ preventScroll: true });
       store().setFocusBlock(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequested, isMarkdown]);
 
   /** 코드 확정. notify면 자동 재계산/dirty 배지 통지 (§2.3.3 코드 저장 → dirty) */
@@ -789,7 +792,7 @@ export default function PyBlockCard({
       className={cn(
         // 한 묶음(제목·설명·코드·출력)이 하나의 카드로 읽히도록: 라운드 클리핑 + 좌측 종류 바.
         // 코드 블록은 Sky Blue(파이썬 관여), 마크다운은 중립 회색 — 이웃 카드와 시각적으로 분리된다.
-        "group relative overflow-hidden rounded-md border bg-card shadow-sm transition-shadow",
+        "group relative scroll-mt-1 overflow-hidden rounded-md border bg-card shadow-sm transition-shadow",
         "border-l-[3px]",
         isMarkdown ? "border-l-muted-foreground/35" : "border-l-primary/70",
         hovered && "border-primary/60 shadow-[0_0_0_2px_#EAF3FA]", // spill hover → 카드 강조 (§4.8)

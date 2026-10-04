@@ -238,8 +238,8 @@ export default function CodeEditor({
   const focusRequested = useWorkbookStore((s) => blockId !== undefined && s.focusBlockId === blockId);
   useEffect(() => {
     if (focusRequested) {
-      viewRef.current?.focus();
-      hostRef.current?.scrollIntoView({ block: "nearest" });
+      // 스크롤 없이 포커스 — 카드(PyBlockCard)가 상단 기준으로 정렬한다
+      viewRef.current?.contentDOM.focus({ preventScroll: true });
       useWorkbookStore.getState().setFocusBlock(null);
     }
   }, [focusRequested]);

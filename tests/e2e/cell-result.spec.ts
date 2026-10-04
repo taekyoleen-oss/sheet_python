@@ -53,3 +53,34 @@ test("셀 아래 실행 결과 → 숨기기 → 시트로 보내기 켜면 spil
   await page.getByRole("button", { name: "시트로 보내기" }).click();
   await expect.poll(() => srcCount(page)).toBe(0);
 });
+
+test("카드 선택(목차·이동) → 접힌 카드도 펼치고 카드 상단을 화면 상단에 맞춘다", async ({ page }) => {
+  await page.goto("/");
+  await waitForApp(page);
+  const ids: string[] = await page.evaluate(() => {
+    const st = (window as any).__pygridStore.getState();
+    const sid = st.workbook.sheets[0].id;
+    const out: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const id = st.addPyBlock(sid, { r: i * 3, c: 0 });
+      st.setBlockCode(id, Array.from({ length: 8 }, (_, k) => `x${k} = ${k}`).join("\n"));
+      out.push(id);
+    }
+    st.setBlockCollapsed(out[6], true);
+    return out;
+  });
+  await page.evaluate((id) => (window as any).__pygridStore.getState().setFocusBlock(id), ids[6]);
+
+  const card = page.locator(`[data-block-id="${ids[6]}"]`);
+  await expect(card.getByLabel("Python 코드")).toBeVisible(); // 펼쳐짐
+  await expect
+    .poll(() =>
+      card.evaluate((el) => {
+        let p = el.parentElement;
+        while (p && !(p.scrollHeight > p.clientHeight && /auto|scroll/.test(getComputedStyle(p).overflowY)))
+          p = p.parentElement;
+        return p ? Math.abs(el.getBoundingClientRect().top - p.getBoundingClientRect().top) : -1;
+      }),
+    )
+    .toBeLessThan(12);
+});
