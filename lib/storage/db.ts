@@ -28,6 +28,14 @@ export interface AppSettings {
   /** Anthropic API 키 (부록 E R6) — 이 브라우저 IndexedDB 전용.
    *  워크북 JSON·내보내기·git 어디에도 실리지 않는다(워크북 객체와 분리 저장) */
   anthropicApiKey?: string;
+  /** 부록 P: 속성 창 열림·고정·너비(px) */
+  propsOpen?: boolean;
+  propsPinned?: boolean;
+  propsWidth?: number;
+  /** 부록 P.6: 스프레드시트 작게 보기 (기본 true) */
+  gridCompact?: boolean;
+  /** 부록 P.6: 그리드:Python 분할(그리드 %, 기본 40 — Python 작업 중심). 구 splitRatio(72 기본)는 쓰지 않는다 */
+  gridSplit?: number;
   /** AI 채팅 패널 열림 (부록 G.2, 기본 false) */
   aiChatOpen?: boolean;
   /** AI 채팅 이력 — 로컬 전용, 워크북 파일 미포함. 최대 200개(저장 시 캡) */

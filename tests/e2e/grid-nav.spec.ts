@@ -20,6 +20,7 @@ async function setup(page: Page) {
   await page.evaluate(() => {
     const store = (window as any).__pygridStore;
     store.getState().newWorkbook();
+    store.getState().setGridCompact(false); // 부록 P.6: 셀 좌표 보정(88×34)은 기본 크기 보기 기준
     const st = store.getState();
     const sid = st.workbook.sheets[0].id;
     for (let r = 0; r < 5; r++)

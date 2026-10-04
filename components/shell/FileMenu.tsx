@@ -49,8 +49,13 @@ export function loadWorkbookData(wb: Workbook): void {
   useWorkbookStore.getState().loadWorkbook(structuredClone(wb));
 }
 
-/** 첫 방문 기본 워크북 (WorkbookShell) */
 export const SAMPLE_LIFE_TABLE = lifeTableSample as unknown as Workbook;
+
+/** 첫 방문 기본 워크북 — 임금 회귀 예측(부록 N.4). 357KB라 첫 페인트 뒤 동적 로드 */
+export const loadDefaultWorkbook = async (): Promise<void> => {
+  const m = await import("@/data/sample-workbooks/wage-regression.pygrid.json");
+  loadWorkbookData(m.default as unknown as Workbook);
+};
 
 interface SampleWorkbook {
   label: string;

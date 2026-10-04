@@ -21,7 +21,7 @@ const boxOf = async (page: Page, name: string) => {
   return box!;
 };
 
-test("셸 바: 감추기 → 파일 → 샘플 → 최근 → ? 순서, Python 감추기는 우측 끝", async ({
+test("셸 바: 감추기 → 파일 → 샘플 → 최근 → ? 순서, Python 감추기·속성 창은 우측 끝", async ({
   page,
 }) => {
   await page.goto("/");
@@ -42,9 +42,11 @@ test("셸 바: 감추기 → 파일 → 샘플 → 최근 → ? 순서, Python �
   expect(xs).toEqual([...xs].sort((a, b) => a - b));
   expect(gridToggle.x - bar.x).toBeLessThan(48); // 좌측 패딩 + 한 칸 이내
 
-  // 2) Python 패널 감추기 = 우측 끝
+  // 2) Python 패널 감추기 = 우측, 그 오른쪽 끝은 속성 창 토글(부록 P — 창이 오른쪽에 열린다)
+  const propsToggle = await boxOf(page, "속성 창 열기 (변수·파일)");
   expect(pyToggle.x).toBeGreaterThan(bar.x + bar.width * 0.7);
-  expect(bar.x + bar.width - (pyToggle.x + pyToggle.width)).toBeLessThan(24);
+  expect(propsToggle.x).toBeGreaterThan(pyToggle.x);
+  expect(bar.x + bar.width - (propsToggle.x + propsToggle.width)).toBeLessThan(24);
   // 3) 같은 셸 바 행에서 서로 마주본다
   expect(Math.abs(gridToggle.y - pyToggle.y)).toBeLessThan(2);
 

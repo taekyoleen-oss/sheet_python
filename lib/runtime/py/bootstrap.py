@@ -112,15 +112,24 @@ def _pygrid_run(code):
         )
 
 
+def _pygrid_mark_baseline():
+    """초기화 스크립트 직후의 전역을 기억한다 — 변수 목록은 그 뒤 실행으로 생긴 것만 보인다(부록 P)."""
+    global _pygrid_baseline
+    _pygrid_baseline = {k: id(v) for k, v in globals().items()}
+
+
 def _pygrid_inspect():
-    """전역 변수 목록(JSON 문자열). 모듈·함수·클래스·언더스코어 이름은 제외."""
+    """전역 변수 목록(JSON 문자열). 모듈·함수·클래스·언더스코어 이름, 초기화 스크립트가 만든 이름은 제외."""
     import json
     import types
 
+    base = globals().get("_pygrid_baseline", {})
     out = []
     for name, v in list(globals().items()):
         if name.startswith("_"):
             continue
+        if base.get(name) == id(v):
+            continue  # 초기화 스크립트가 만든 그대로 — 실행으로 생긴 변수가 아니다
         if isinstance(
             v, (types.ModuleType, types.FunctionType, types.BuiltinFunctionType, type)
         ):

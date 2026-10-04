@@ -13,6 +13,8 @@ async function waitForApp(page: Page) {
   );
   await page.waitForSelector('[data-testid="data-grid-canvas"]');
   await page.evaluate(() => (window as any).__pygridStore.getState().newWorkbook());
+  // 부록 P.6: 셀 좌표 보정(88×34)은 기본 크기 보기 기준
+  await page.evaluate(() => (window as any).__pygridStore.getState().setGridCompact(false));
 }
 
 const cellAt = (page: Page, key: string) =>

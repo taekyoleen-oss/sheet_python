@@ -20,18 +20,18 @@ import SheetEditToolbar from "@/components/grid/SheetEditToolbar";
 import SheetGrid from "@/components/grid/SheetGrid";
 import SheetTabs from "@/components/grid/SheetTabs";
 import AiChatPanel from "@/components/ai-chat/AiChatPanel";
-import BottomPanel from "@/components/panels/BottomPanel";
+import PropertiesPanel from "@/components/panels/PropertiesPanel";
 import FitGuideDialog from "@/components/python/FitGuideDialog";
 import PythonPanel from "@/components/python/PythonPanel";
 import TocPanel from "@/components/python/TocPanel";
 import {
   loadWorkbookData,
   openWorkbookFile,
-  SAMPLE_LIFE_TABLE,
+  loadDefaultWorkbook,
 } from "@/components/shell/FileMenu";
 import Header from "@/components/shell/Header";
 import { RuntimeStatus } from "@/components/shell/RuntimeStatus";
-import ShellBar, { togglePanelCollapse } from "@/components/shell/ShellBar";
+import ShellBar, { togglePanelCollapse, toggleProps } from "@/components/shell/ShellBar";
 import StatusBar from "@/components/shell/StatusBar";
 import dynamic from "next/dynamic";
 
@@ -48,6 +48,7 @@ import { serializeRange } from "@/lib/grid/clipboard/serialize";
 import { useWorkbookStore } from "@/lib/grid/model";
 import { addBlockAtSelection } from "@/lib/grid/run-block";
 import { DEFAULT_INIT_SCRIPT, getRuntimeClient } from "@/lib/runtime/client";
+import { startWorkDirSync } from "@/lib/runtime/workdir-sync";
 import { useAutosave } from "@/lib/storage/autosave";
 import { getWorkbook, loadSettings, saveSettings } from "@/lib/storage/db";
 
@@ -76,7 +77,7 @@ function useTier(): Tier {
   return tier;
 }
 
-type MobileView = "grid" | "python" | "toc" | "ai" | "bottom";
+type MobileView = "grid" | "python" | "toc" | "ai";
 
 /** 접힌 패널 자리의 얇은 세로 스트립 — 클릭하면 다시 펼쳐진다 */
 function CollapsedStrip({ panel, label }: { panel: "grid" | "python"; label: string }) {
@@ -98,8 +99,8 @@ function CollapsedStrip({ panel, label }: { panel: "grid" | "python"; label: str
 export default function WorkbookShell() {
   const saveStatus = useAutosave();
   const [restored, setRestored] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(72);
-  const [bottomHeight, setBottomHeight] = useState(24);
+  // 부록 P.6: 그리드 % — 기본 40(스프레드시트는 보조, Python 작업 중심)
+  const [splitRatio, setSplitRatio] = useState(40);
   // 런타임 싱글턴 — 첫 클라이언트 렌더에서 생성 (ssr:false 페이지)
   const [runtime] = useState(() => getRuntimeClient());
   // §4.7 반응형: lg=Python 패널 접이식, md/sm=탭 전환
@@ -119,6 +120,37 @@ export default function WorkbookShell() {
     if (view === "reference") setRefMounted(true);
   }, [view]);
   const aiChatOpen = useWorkbookStore((s) => s.aiChatOpen);
+  // 부록 P: 속성 창 — 고정(옆에 붙어 화면을 나눔) / 겹침(화면 위)
+  const propsOpen = useWorkbookStore((s) => s.propsOpen);
+  const propsPinned = useWorkbookStore((s) => s.propsPinned);
+  const gridMaximized = useWorkbookStore((s) => s.gridMaximized);
+  const [propsWidth, setPropsWidth] = useState(360);
+  const [propsResizing, setPropsResizing] = useState(false);
+  const togglePropsPin = () => {
+    const next = !useWorkbookStore.getState().propsPinned;
+    useWorkbookStore.getState().setPropsPinned(next);
+    void saveSettings({ propsPinned: next });
+  };
+  /** 왼쪽 가장자리 드래그로 너비 조절 (240~720px, 놓을 때 저장) */
+  const startPropsResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = propsWidth;
+    let w = w0;
+    setPropsResizing(true); // 끄는 동안은 너비 애니메이션을 끈다
+    const move = (ev: PointerEvent) => {
+      w = Math.max(240, Math.min(720, w0 + x0 - ev.clientX));
+      setPropsWidth(w);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setPropsResizing(false);
+      void saveSettings({ propsWidth: w });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const closeToc = () => {
     useWorkbookStore.getState().setTocOpen(false);
     void saveSettings({ tocOpen: false });
@@ -133,6 +165,9 @@ export default function WorkbookShell() {
   const rest = 100 - (tocOpen ? TOC_SIZE : 0) - (aiChatOpen ? AI_SIZE : 0);
   const gridSize = pyCollapsed ? rest : Math.round((splitRatio / 100) * rest);
   const pySize = gridCollapsed ? rest : rest - gridSize;
+
+  // 부록 P: 워크북 작업 폴더를 부트마다 os.chdir 코드로 적용
+  useEffect(() => startWorkDirSync(runtime), [runtime]);
 
   // 런타임 백그라운드 부트 (멱등) — 첫 페인트와 CDN 다운로드가 경쟁하지 않게 유휴 시점으로 미룬다
   useEffect(() => {
@@ -153,17 +188,19 @@ export default function WorkbookShell() {
       );
     };
     const focusPython = () => {
+      useWorkbookStore.getState().setGridMaximized(false); // Python 작업 → 스프레드시트는 다시 보조 크기
       if (tierRef.current === "md" || tierRef.current === "sm") setMobileView("python");
       togglePanelCollapse("python", false);
       const st = useWorkbookStore.getState();
       const target = st.lastEditorBlockId ?? st.workbook.pyBlocks[0]?.id;
       if (target) requestAnimationFrame(() => useWorkbookStore.getState().setFocusBlock(target));
     };
+    // 부록 P.7: 예전 하단 패널 자리 = 속성 창 — 열고 위쪽 활성 탭에 포커스
     const focusBottom = () => {
-      if (tierRef.current === "md" || tierRef.current === "sm") setMobileView("bottom");
+      toggleProps(true);
       requestAnimationFrame(() =>
         document
-          .querySelector<HTMLElement>('#bottom-panel-tabs [data-state="active"]')
+          .querySelector<HTMLElement>('[data-testid="properties-panel"] [role="tab"][aria-selected="true"]')
           ?.focus(),
       );
     };
@@ -173,6 +210,17 @@ export default function WorkbookShell() {
       // 출력 위치 지정 취소 (§ 앵커 재지정)
       if (e.key === "Escape" && useWorkbookStore.getState().anchorPicking) {
         useWorkbookStore.getState().setAnchorPicking(null);
+        return;
+      }
+      // 부록 P.6: Esc — 스프레드시트 전체 화면 끝 (셀 편집 중이면 편집 취소가 먼저)
+      if (e.key === "Escape" && useWorkbookStore.getState().gridMaximized && !isTextInput(e.target)) {
+        useWorkbookStore.getState().setGridMaximized(false);
+        return;
+      }
+      // Ctrl+Alt+3 — 속성 창 열기/닫기
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === "3") {
+        e.preventDefault();
+        toggleProps();
         return;
       }
       // Ctrl+Alt+1/2 — 스프레드시트·Python 패널 접기/펼치기 (포커스 이동 단축키보다 먼저 판정)
@@ -256,24 +304,27 @@ export default function WorkbookShell() {
     };
   }, []);
 
-  // 마운트 시: 설정 + 마지막 워크북 복원. 없거나 실패하면 생명표 샘플 (§2.2 첫 방문)
+  // 마운트 시: 설정 + 마지막 워크북 복원. 없거나 실패하면 임금 회귀 예측 샘플 (§2.2 첫 방문)
   useEffect(() => {
     (async () => {
       try {
         const settings = await loadSettings();
-        if (settings?.splitRatio) setSplitRatio(settings.splitRatio);
-        if (settings?.bottomPanelHeight) setBottomHeight(settings.bottomPanelHeight);
+        if (settings?.gridSplit) setSplitRatio(settings.gridSplit);
+        if (settings?.gridCompact === false) useWorkbookStore.getState().setGridCompact(false);
         if (settings?.tocOpen) useWorkbookStore.getState().setTocOpen(true);
         if (settings?.aiChatOpen) useWorkbookStore.getState().setAiChatOpen(true);
+        if (settings?.propsOpen) useWorkbookStore.getState().setPropsOpen(true);
+        if (settings?.propsPinned === false) useWorkbookStore.getState().setPropsPinned(false);
+        if (settings?.propsWidth) setPropsWidth(settings.propsWidth);
         if (settings?.showRefs === false) useWorkbookStore.getState().setShowRefs(false);
         if (settings?.view === "reference") useWorkbookStore.getState().setView("reference");
         const wb = settings?.lastWorkbookId
           ? await getWorkbook(settings.lastWorkbookId)
           : undefined;
         if (wb) useWorkbookStore.getState().loadWorkbook(wb);
-        else loadWorkbookData(SAMPLE_LIFE_TABLE);
+        else await loadDefaultWorkbook();
       } catch {
-        loadWorkbookData(SAMPLE_LIFE_TABLE);
+        await loadDefaultWorkbook().catch(() => undefined);
       } finally {
         setRestored(true);
         // e2e 테스트가 복원 완료를 기다릴 수 있게 신호
@@ -305,12 +356,9 @@ export default function WorkbookShell() {
   const onLayoutChanged = (layout: Record<string, number>) => {
     if (layout.grid && layout.python) {
       void saveSettings({
-        splitRatio: Math.round((layout.grid / (layout.grid + layout.python)) * 100),
+        gridSplit: Math.round((layout.grid / (layout.grid + layout.python)) * 100),
       });
     }
-  };
-  const onVerticalLayoutChanged = (layout: Record<string, number>) => {
-    if (layout.bottom) void saveSettings({ bottomPanelHeight: layout.bottom });
   };
 
   return (
@@ -322,7 +370,8 @@ export default function WorkbookShell() {
         {/* 워크북 뷰 — 참조 뷰 활성 시에도 마운트 유지(hidden): 런타임·그리드 상태 보존 */}
         <div className={view === "workbook" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
         <ShellBar />
-        <main className="flex min-h-0 flex-1 flex-col">
+        <main className="relative flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {tier === "md" || tier === "sm" ? (
           /* §4.7 640–1023(및 <640 열람 우선): 그리드 ↔ Python ↔ 결과 탭 전환 */
           <div className="flex min-h-0 flex-1 flex-col">
@@ -333,7 +382,6 @@ export default function WorkbookShell() {
                   ["python", "Python"],
                   ["toc", "목차"],
                   ["ai", "AI 채팅"],
-                  ["bottom", "결과"],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -366,85 +414,118 @@ export default function WorkbookShell() {
               {mobileView === "python" && <PythonPanel />}
               {mobileView === "toc" && <TocPanel />}
               {mobileView === "ai" && <AiChatPanel />}
-              {mobileView === "bottom" && (
-                <div className="h-full">
-                  <BottomPanel client={runtime} />
-                </div>
-              )}
+
             </div>
           </div>
-        ) : (
-          <ResizablePanelGroup
-            key={restored ? "restored-v" : "initial-v"} // 설정 로드 후 defaultSize 반영을 위해 재마운트
-            orientation="vertical"
-            className="min-h-0 flex-1"
-            onLayoutChanged={onVerticalLayoutChanged}
+        ) : gridMaximized ? (
+          /* 부록 P.6: 스프레드시트 전체 화면 — Esc·오른쪽 아래 버튼·Python 포커스(Ctrl+2)로 돌아온다 */
+          <div
+            {...dropHandlers}
+            data-testid="grid-maximized"
+            className={`flex min-h-0 flex-1 flex-col ${dropActive ? "ring-2 ring-inset ring-primary" : ""}`}
           >
-            <ResizablePanel id="main" defaultSize={`${100 - bottomHeight}%`} minSize="30%">
-              {/* 접힌 패널은 그룹 밖 세로 스트립으로 대체 — Panel은 Group의 직계 자식이어야 한다 */}
-              <div className="flex h-full">
-                {gridCollapsed && <CollapsedStrip panel="grid" label="시트" />}
-                <ResizablePanelGroup
-                  key={`${gridCollapsed ? "no-grid" : "grid"}-${pyCollapsed ? "no-py" : "py"}-${tocOpen ? "toc" : "no-toc"}-${aiChatOpen ? "ai" : "no-ai"}`}
-                  orientation="horizontal"
-                  className="min-h-0 min-w-0 flex-1"
-                  onLayoutChanged={onLayoutChanged}
-                >
-                  {!gridCollapsed && (
-                    <ResizablePanel id="grid" defaultSize={`${gridSize}%`} minSize="15%">
-                      <div
-                        {...dropHandlers}
-                        className={`flex h-full min-w-0 flex-col ${dropActive ? "ring-2 ring-inset ring-primary" : ""}`}
-                      >
-                        <SheetEditToolbar />
-                        <FormulaBar />
-                        <SheetGrid />
-                        <SheetTabs />
-                      </div>
-                    </ResizablePanel>
-                  )}
-                  {!pyCollapsed && (
-                    <>
-                      {!gridCollapsed && <ResizableHandle withHandle />}
-                      <ResizablePanel
-                        id="python"
-                        defaultSize={`${pySize}%`}
-                        minSize="15%"
-                      >
-                        <PythonPanel />
-                      </ResizablePanel>
-                    </>
-                  )}
-                  {/* 부록 D.2: 목차 전용 패널 (툴바 토글·자체 ✕, 상태는 설정에 저장) */}
-                  {tocOpen && (
-                    <>
-                      <ResizableHandle withHandle />
-                      <ResizablePanel id="toc" defaultSize={`${TOC_SIZE}%`} minSize="10%">
-                        <TocPanel onClose={closeToc} />
-                      </ResizablePanel>
-                    </>
-                  )}
-                  {/* 부록 G.2: AI 채팅 패널 (최우측, 같은 패턴) */}
-                  {aiChatOpen && (
-                    <>
-                      <ResizableHandle withHandle />
-                      <ResizablePanel id="aichat" defaultSize={`${AI_SIZE}%`} minSize="12%">
-                        <AiChatPanel onClose={closeAiChat} />
-                      </ResizablePanel>
-                    </>
-                  )}
-                </ResizablePanelGroup>
-                {pyCollapsed && <CollapsedStrip panel="python" label="Python" />}
-              </div>
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel id="bottom" defaultSize={`${bottomHeight}%`} minSize="10%">
-              <div className="h-full border-t">
-                <BottomPanel client={runtime} />
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            <SheetEditToolbar />
+            <FormulaBar />
+            <SheetGrid />
+            <SheetTabs />
+          </div>
+        ) : (
+          /* 부록 P.7: 하단 패널 없음 — 진단·미리보기·콘솔은 오른쪽 속성 창 탭.
+             접힌 패널은 그룹 밖 세로 스트립으로 대체 — Panel은 Group의 직계 자식이어야 한다 */
+          <div className="flex min-h-0 flex-1">
+            {gridCollapsed && <CollapsedStrip panel="grid" label="시트" />}
+            <ResizablePanelGroup
+              key={`${restored ? "r" : "i"}-${gridCollapsed ? "no-grid" : "grid"}-${pyCollapsed ? "no-py" : "py"}-${tocOpen ? "toc" : "no-toc"}-${aiChatOpen ? "ai" : "no-ai"}`}
+              orientation="horizontal"
+              className="min-h-0 min-w-0 flex-1"
+              onLayoutChanged={onLayoutChanged}
+            >
+              {!gridCollapsed && (
+                <ResizablePanel id="grid" defaultSize={`${gridSize}%`} minSize="15%">
+                  <div
+                    {...dropHandlers}
+                    className={`flex h-full min-w-0 flex-col ${dropActive ? "ring-2 ring-inset ring-primary" : ""}`}
+                  >
+                    <SheetEditToolbar />
+                    <FormulaBar />
+                    <SheetGrid />
+                    <SheetTabs />
+                  </div>
+                </ResizablePanel>
+              )}
+              {!pyCollapsed && (
+                <>
+                  {!gridCollapsed && <ResizableHandle withHandle />}
+                  <ResizablePanel
+                    id="python"
+                    defaultSize={`${pySize}%`}
+                    minSize="15%"
+                  >
+                    <PythonPanel />
+                  </ResizablePanel>
+                </>
+              )}
+              {/* 부록 D.2: 목차 전용 패널 (툴바 토글·자체 ✕, 상태는 설정에 저장) */}
+              {tocOpen && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel id="toc" defaultSize={`${TOC_SIZE}%`} minSize="10%">
+                    <TocPanel onClose={closeToc} />
+                  </ResizablePanel>
+                </>
+              )}
+              {/* 부록 G.2: AI 채팅 패널 (최우측, 같은 패턴) */}
+              {aiChatOpen && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel id="aichat" defaultSize={`${AI_SIZE}%`} minSize="12%">
+                    <AiChatPanel onClose={closeAiChat} />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+            {pyCollapsed && <CollapsedStrip panel="python" label="Python" />}
+          </div>
         )}
+        </div>
+        {/* 부록 P·P.7: 속성 창 — 항상 마운트(콘솔 기록 보존)하고 오른쪽에서 밀려 나오고 들어간다.
+            고정: 옆 칸 너비가 0 ↔ W로 변하며 화면을 나눈다 / 겹침(좁은 화면은 항상): 화면 위로 미끄러져 덮는다 */}
+        {(() => {
+          const overlay = !propsPinned || tier === "md" || tier === "sm";
+          return (
+            <aside
+              aria-label="속성 창"
+              aria-hidden={!propsOpen}
+              inert={!propsOpen}
+              data-open={propsOpen}
+              style={{ width: overlay ? `min(${propsWidth}px, 100%)` : propsOpen ? propsWidth : 0 }}
+              className={[
+                overlay ? "absolute inset-y-0 right-0 z-30" : "relative shrink-0",
+                "overflow-hidden bg-background",
+                propsOpen ? "border-l" : "",
+                overlay && propsOpen ? "shadow-2xl" : "",
+                overlay && !propsOpen ? "translate-x-full" : "translate-x-0",
+                propsResizing ? "" : "transition-[width,transform] duration-200 ease-out motion-reduce:transition-none",
+              ].join(" ")}
+            >
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="속성 창 너비 조절"
+                onPointerDown={startPropsResize}
+                className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/20"
+              />
+              <div className="h-full" style={{ width: overlay ? "100%" : propsWidth }}>
+                <PropertiesPanel
+                  open={propsOpen}
+                  pinned={!overlay}
+                  onTogglePin={tier === "md" || tier === "sm" ? undefined : togglePropsPin}
+                  onClose={() => toggleProps(false)}
+                />
+              </div>
+            </aside>
+          );
+        })()}
         </main>
         </div>
         {/* 참조 뷰(데이터 예제/분석) — 항상 마운트, 비활성 시 hidden (부록 E R2) */}

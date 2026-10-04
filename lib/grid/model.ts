@@ -288,7 +288,10 @@ export interface WorkbookState {
   /** 출력 미리보기 탭 대상 블록 */
   selectedBlockId: string | null;
   /** 하단 패널 활성 탭 */
-  bottomTab: "diagnostics" | "preview" | "variables" | "console";
+  /** 부록 P.7: 속성 창 위쪽 탭 (하단 패널을 여기로 옮겼다) */
+  propsTopTab: "variables" | "console" | "diagnostics";
+  /** 부록 P.7: 속성 창 아래쪽 탭 */
+  propsBottomTab: "files" | "preview";
   /** 마지막으로 포커스된 블록 편집기 (참조 삽입·스니펫 대상) */
   lastEditorBlockId: string | null;
   /** 출력 위치 지정 중인 출력 — 다음 그리드 클릭이 앵커가 된다 (transient) */
@@ -297,6 +300,14 @@ export interface WorkbookState {
   tocOpen: boolean;
   /** AI 채팅 패널 열림 (부록 G.2, 설정에 저장, undo 대상 아님) */
   aiChatOpen: boolean;
+  /** 부록 P: 속성 창(변수·파일) 열림 — 설정에 저장, undo 대상 아님 */
+  propsOpen: boolean;
+  /** 부록 P: 속성 창 고정(true = 옆에 붙어 화면을 나눔, false = 화면 위에 겹침) */
+  propsPinned: boolean;
+  /** 부록 P.6: 스프레드시트 작게 보기(보조 화면 — 기본 켬, 설정에 저장) */
+  gridCompact: boolean;
+  /** 부록 P.6: 스프레드시트 전체 화면 (세션 한정) */
+  gridMaximized: boolean;
   /** 스프레드시트 패널 접힘 (설정에 저장, undo 대상 아님) */
   gridCollapsed: boolean;
   /** Python 패널 접힘 (설정에 저장, undo 대상 아님) */
@@ -377,7 +388,7 @@ export interface WorkbookState {
    */
   addOutputs: (
     blockId: string,
-    specs: { selection: OutputSelection; label: string; width: number }[],
+    specs: { selection: OutputSelection; label: string; width: number; includeIndex?: IncludeIndex }[],
     start?: { sheetId: string; r: number; c: number },
   ) => string[];
   /** 출력 삭제 — 그 출력의 spill 셀을 같은 트랜잭션에서 지운다. 마지막 하나는 거부 */
@@ -425,7 +436,10 @@ export interface WorkbookState {
   setHoverRange: (hover: { sheetId: string; range: CellRange } | null) => void;
   setHoverBlock: (id: string | null) => void;
   setSelectedBlock: (id: string | null) => void;
-  setBottomTab: (tab: WorkbookState["bottomTab"]) => void;
+  /** 속성 창의 해당 탭을 열고(창이 닫혀 있으면 연다) 보여 준다 */
+  showPanelTab: (
+    tab: WorkbookState["propsTopTab"] | WorkbookState["propsBottomTab"],
+  ) => void;
   setLastEditorBlock: (id: string | null) => void;
   setAnchorPicking: (target: AnchorPickTarget | null) => void;
   /** 부록 J.2: 선택 범위에 셀 서식 병합 적용 — src 셀 제외, 한 트랜잭션(= 한 undo).
@@ -442,6 +456,12 @@ export interface WorkbookState {
   setChatRefs: (refs: SheetRange[]) => void;
   setTocOpen: (open: boolean) => void;
   setAiChatOpen: (open: boolean) => void;
+  setPropsOpen: (open: boolean) => void;
+  setPropsPinned: (pinned: boolean) => void;
+  setGridCompact: (compact: boolean) => void;
+  setGridMaximized: (max: boolean) => void;
+  /** 부록 P: 작업 폴더 지정(워크북에 저장, null = 지정 해제). 실제 적용은 런타임 코드(os.chdir) */
+  setWorkDir: (dir: string | null) => void;
   /** 그리드·Python 패널 접기 — 둘 다 접히면 화면이 비므로 반대쪽은 자동으로 펼친다 */
   setPanelCollapsed: (panel: "grid" | "python", collapsed: boolean) => void;
   setView: (view: "workbook" | "reference") => void;
@@ -549,11 +569,16 @@ export const createWorkbookStore = () => {
           hoverRange: null,
           hoverBlockId: null,
           selectedBlockId: null,
-          bottomTab: "diagnostics" as const,
+          propsTopTab: "variables" as const,
+          propsBottomTab: "files" as const,
           lastEditorBlockId: null,
           anchorPicking: null,
           tocOpen: false,
           aiChatOpen: false,
+          propsOpen: false,
+          propsPinned: true,
+          gridCompact: true,
+          gridMaximized: false,
           gridCollapsed: false,
           pyCollapsed: false,
           view: "workbook" as const,
@@ -1109,7 +1134,7 @@ export const createWorkbookStore = () => {
                   ...(sheetId === b.sheetId ? {} : { sheetId }),
                   anchor: { r, c },
                   mode: "values",
-                  includeIndex: "auto",
+                  includeIndex: spec.includeIndex ?? "auto",
                   selection: spec.selection,
                   label: spec.label,
                 });
@@ -1331,9 +1356,11 @@ export const createWorkbookStore = () => {
               state.selectedBlockId = id;
             }),
 
-          setBottomTab: (tab) =>
+          showPanelTab: (tab) =>
             set((state) => {
-              state.bottomTab = tab;
+              if (tab === "files" || tab === "preview") state.propsBottomTab = tab;
+              else state.propsTopTab = tab;
+              state.propsOpen = true;
             }),
 
           setLastEditorBlock: (id) =>
@@ -1394,6 +1421,33 @@ export const createWorkbookStore = () => {
           setTocOpen: (open) =>
             set((state) => {
               state.tocOpen = open;
+            }),
+
+          setPropsOpen: (open) =>
+            set((state) => {
+              state.propsOpen = open;
+            }),
+
+          setPropsPinned: (pinned) =>
+            set((state) => {
+              state.propsPinned = pinned;
+            }),
+
+          setGridCompact: (compact) =>
+            set((state) => {
+              state.gridCompact = compact;
+            }),
+
+          setGridMaximized: (max) =>
+            set((state) => {
+              state.gridMaximized = max;
+              if (max) state.gridCollapsed = false; // 접힌 채로는 전체 화면이 될 수 없다
+            }),
+
+          setWorkDir: (dir) =>
+            set((state) => {
+              if (dir === null) delete state.workbook.workDir;
+              else state.workbook.workDir = dir;
             }),
 
           setAiChatOpen: (open) =>

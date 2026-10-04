@@ -11,6 +11,7 @@ import {
   type OutputRequest,
   type RangeSnapshot,
   type RunPayload,
+  type DirEntry,
   type VariableInfo,
   type WorkerToMain,
 } from "./protocol";
@@ -411,6 +412,15 @@ export class RuntimeClient {
     const res = await this.request({ t: "readFile", id, path });
     if (res.t === "fileError") throw new Error(res.message);
     return new Uint8Array((res as Extract<WorkerToMain, { t: "fileRead" }>).bytes);
+  }
+
+  /** 부록 P: 폴더 목록 (path 생략 = Python 작업 폴더). 경로는 워커가 절대 경로로 정규화한다 */
+  async listDir(path?: string): Promise<{ cwd: string; path: string; entries: DirEntry[] }> {
+    const id = this.nextId++;
+    const res = await this.request({ t: "listDir", id, path });
+    if (res.t === "fileError") throw new Error(res.message);
+    const { cwd, path: p, entries } = res as Extract<WorkerToMain, { t: "dirListing" }>;
+    return { cwd, path: p, entries };
   }
 
   /** writeFile로 쓴(캐시된) 파일 이름 목록. 워커 왕복 없음 — UI 칩 표시용.

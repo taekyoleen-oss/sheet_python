@@ -7,7 +7,7 @@
 // 스프레드시트를 접으면 함께 사라진다. Python 조작은 PythonPanel 헤더에 있다.
 
 import { type ReactNode } from "react";
-import { Code, Play, Table } from "@phosphor-icons/react";
+import { Code, Play, SidebarSimple, Table } from "@phosphor-icons/react";
 import FileMenu, {
   RecentWorkbookMenu,
   SampleWorkbookMenu,
@@ -21,6 +21,15 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkbookStore } from "@/lib/grid/model";
 import { runAllBlocks } from "@/lib/grid/run-block";
+import { saveSettings } from "@/lib/storage/db";
+
+/** 부록 P: 속성 창 열기/닫기 (셸 바 버튼·창의 ✕ 공용, 설정에 저장) */
+export function toggleProps(next?: boolean): void {
+  const st = useWorkbookStore.getState();
+  const target = next ?? !st.propsOpen;
+  st.setPropsOpen(target);
+  void saveSettings({ propsOpen: target });
+}
 
 /**
  * 그리드·Python 패널 접기 토글 (툴바·세로 스트립·단축키 공용).
@@ -95,9 +104,11 @@ function ShortcutHelp() {
           <li>Ctrl+Z / Ctrl+Y — 실행 취소 / 다시 실행</li>
           <li>Ctrl(또는 Alt)+1 — 그리드로 포커스</li>
           <li>Ctrl(또는 Alt)+2 — Python 편집기로 포커스</li>
-          <li>Ctrl(또는 Alt)+3 — 하단 패널로 포커스</li>
+          <li>Ctrl(또는 Alt)+3 — 속성 창(변수·콘솔·진단·파일)으로 포커스</li>
           <li>Ctrl+Alt+1 — 스프레드시트 접기/펼치기</li>
           <li>Ctrl+Alt+2 — Python 패널 접기/펼치기</li>
+          <li>Ctrl+Alt+3 — 속성 창 열기/닫기</li>
+          <li>Esc — 스프레드시트 전체 화면 끝내기</li>
         </ul>
       </TooltipContent>
     </Tooltip>
@@ -107,6 +118,7 @@ function ShortcutHelp() {
 export default function ShellBar() {
   const gridCollapsed = useWorkbookStore((s) => s.gridCollapsed);
   const pyCollapsed = useWorkbookStore((s) => s.pyCollapsed);
+  const propsOpen = useWorkbookStore((s) => s.propsOpen);
 
   return (
     <div
@@ -156,6 +168,17 @@ export default function ShellBar() {
           onClick={() => togglePanelCollapse("python")}
         >
           <Code />
+        </ToolButton>
+      </span>
+      {/* 부록 P: 속성 창(변수·파일) — 창이 오른쪽에 열리므로 셸 바 오른쪽 끝 */}
+      <span className="ml-auto flex items-center lg:ml-0">
+        <Separator orientation="vertical" className="mx-1 hidden h-5 lg:block" />
+        <ToolButton
+          label={propsOpen ? "속성 창 닫기" : "속성 창 열기 (변수·파일)"}
+          active={propsOpen}
+          onClick={() => toggleProps()}
+        >
+          <SidebarSimple />
         </ToolButton>
       </span>
     </div>

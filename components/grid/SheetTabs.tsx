@@ -1,8 +1,10 @@
 "use client";
 
 // 하단 시트 탭 — 클릭 전환 · 더블클릭 이름 변경 · 우클릭 메뉴 · ＋ 추가
+// 오른쪽 끝: 보기 조절 (부록 P.6) — 작게 보기 토글 · 전체 화면 (엑셀 상태 표시줄의 확대/축소 자리)
 
 import { useState } from "react";
+import { ArrowsIn, ArrowsOut, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,11 +14,33 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useWorkbookStore } from "@/lib/grid/model";
+import { saveSettings } from "@/lib/storage/db";
+
+const ViewButton = ({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    title={label}
+    className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+  >
+    {children}
+  </button>
+);
 
 export default function SheetTabs() {
   const sheets = useWorkbookStore((s) => s.workbook.sheets);
   const activeSheetId = useWorkbookStore((s) => s.activeSheetId);
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const compact = useWorkbookStore((s) => s.gridCompact);
+  const maximized = useWorkbookStore((s) => s.gridMaximized);
 
   const store = () => useWorkbookStore.getState();
 
@@ -95,6 +119,25 @@ export default function SheetTabs() {
       >
         ＋
       </button>
+      <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-2">
+        {!maximized && (
+          <ViewButton
+            label={compact ? "스프레드시트 크게 보기" : "스프레드시트 작게 보기"}
+            onClick={() => {
+              store().setGridCompact(!compact);
+              void saveSettings({ gridCompact: !compact });
+            }}
+          >
+            {compact ? <MagnifyingGlassPlus className="size-3.5" /> : <MagnifyingGlassMinus className="size-3.5" />}
+          </ViewButton>
+        )}
+        <ViewButton
+          label={maximized ? "전체 화면 끝내기 (Esc)" : "스프레드시트 전체 화면"}
+          onClick={() => store().setGridMaximized(!maximized)}
+        >
+          {maximized ? <ArrowsIn className="size-3.5" /> : <ArrowsOut className="size-3.5" />}
+        </ViewButton>
+      </span>
     </div>
   );
 }

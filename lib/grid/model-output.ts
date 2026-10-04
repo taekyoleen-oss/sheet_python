@@ -3,7 +3,8 @@
 // code는 같은 결과를 내는 라이브러리 원래 코드(사용자가 자기 코드로 옮겨 쓸 때)다.
 
 import type { ModelInfo, VariableInfo } from "@/lib/runtime/protocol";
-import type { OutputSelection } from "@/types/workbook";
+import { blocksInOrder } from "@/lib/grid/model";
+import type { OutputSelection, PyBlock, Workbook } from "@/types/workbook";
 
 export type Interval = "none" | "confidence" | "prediction";
 
@@ -91,4 +92,18 @@ export function withImports(code: string): string {
   if (/\bnp\./.test(code)) lines.push("import numpy as np");
   if (/\bpd\./.test(code)) lines.push("import pandas as pd");
   return [...lines, code].join("\n");
+}
+
+/**
+ * 부록 P: 변수를 만든 블록 — 계산 순서상 그 이름에 대입하는 마지막 코드 블록(`name =`, `name, x =`,
+ * `for name in`, `import … as name`). 없으면 마지막 코드 블록. 연결 출력은 이 블록에 붙인다.
+ */
+export function definingBlock(wb: Workbook, name: string): PyBlock | undefined {
+  const code = blocksInOrder(wb).filter((b) => b.kind !== "markdown");
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(
+    `(^|[\\s,(])${n}\\s*(=(?!=)|,[^\\n=]*=(?!=))|\\bfor\\s+${n}\\b|\\bas\\s+${n}\\b`,
+    "m",
+  );
+  return [...code].reverse().find((b) => re.test(b.code)) ?? code[code.length - 1];
 }

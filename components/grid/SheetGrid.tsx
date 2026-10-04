@@ -72,6 +72,11 @@ const EMPTY_SELECTION: GridSelection = {
 };
 
 const DEFAULT_COL_WIDTH = 88;
+/** 부록 P.6: 작게 보기(보조 화면) / 기본 크기 — 전체 화면에서는 항상 기본 크기 */
+const DENSITY = {
+  compact: { colWidth: 72, rowHeight: 24, headerHeight: 26, font: 12, headerFont: "600 11px", pad: 2 },
+  normal: { colWidth: DEFAULT_COL_WIDTH, rowHeight: 34, headerHeight: 36, font: 13, headerFont: "600 12px", pad: 3 },
+} as const;
 const PRIMARY = "#4A90C2";
 const WARNING = "#D9A441";
 const DESTRUCTIVE = "#C2504A";
@@ -86,6 +91,7 @@ export default function SheetGrid() {
   );
   const pyBlocks = useWorkbookStore((s) => s.workbook.pyBlocks);
   const runningBlocks = useWorkbookStore((s) => s.runningBlocks);
+  const dens = useWorkbookStore((s) => (s.gridCompact && !s.gridMaximized ? DENSITY.compact : DENSITY.normal));
   const flash = useWorkbookStore((s) => s.flash);
   const [gridSelection, setGridSelection] = useState<GridSelection>(EMPTY_SELECTION);
   const editorRef = useRef<DataEditorRef>(null);
@@ -219,12 +225,12 @@ export default function SheetGrid() {
       textHeader: "#5A6472",
       textLight: "#6B7280",
       fontFamily,
-      baseFontStyle: "13px",
-      headerFontStyle: "600 12px",
+      baseFontStyle: `${dens.font}px`,
+      headerFontStyle: dens.headerFont,
       cellHorizontalPadding: 8,
-      cellVerticalPadding: 3,
+      cellVerticalPadding: dens.pad,
     }),
-    [fontFamily],
+    [fontFamily, dens],
   );
 
   const columns = useMemo<GridColumn[]>(
@@ -232,9 +238,9 @@ export default function SheetGrid() {
       Array.from({ length: sheet.colCount }, (_, i) => ({
         id: String(i),
         title: colToLetter(i),
-        width: sheet.colWidths?.[i] ?? DEFAULT_COL_WIDTH,
+        width: sheet.colWidths?.[i] ?? dens.colWidth,
       })),
-    [sheet.colCount, sheet.colWidths],
+    [sheet.colCount, sheet.colWidths, dens],
   );
 
   const getCellContent = useCallback(
@@ -287,7 +293,7 @@ export default function SheetGrid() {
       if (cell.st) {
         themeOverride = {
           ...themeOverride,
-          baseFontStyle: `${cell.st.b ? "bold " : ""}${cell.st.fs ?? 13}px`,
+          baseFontStyle: `${cell.st.b ? "bold " : ""}${cell.st.fs ?? dens.font}px`,
         };
       }
       return {
@@ -303,7 +309,7 @@ export default function SheetGrid() {
         themeOverride,
       };
     },
-    [sheet, anchorMap, runningBlocks],
+    [sheet, anchorMap, runningBlocks, dens],
   );
 
   /** 오버레이: [PY] 배지, spill 테두리, 성공 플래시, 객체 카드 */
@@ -657,13 +663,13 @@ export default function SheetGrid() {
       const store = useWorkbookStore.getState();
       if (cell.t === "e") {
         store.setSelectedBlock(srcBlockId(cell.src));
-        store.setBottomTab("diagnostics");
+        store.showPanelTab("diagnostics");
         return;
       }
       const anchor = anchorMap.get(key);
       if (anchor?.output?.mode === "object" && anchor.output.last?.status === "ok") {
         store.setSelectedBlock(anchor.block.id);
-        store.setBottomTab("preview");
+        store.showPanelTab("preview");
       }
     },
     [sheet.cells, sheet.id, anchorMap, gridSelection, applySelection, extendCorner],
@@ -831,6 +837,8 @@ export default function SheetGrid() {
             ref={editorRef}
             columns={columns}
             rows={sheet.rowCount}
+            rowHeight={dens.rowHeight}
+            headerHeight={dens.headerHeight}
             getCellContent={getCellContent}
             onCellEdited={onCellEdited}
             gridSelection={gridSelection}

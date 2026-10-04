@@ -54,6 +54,7 @@ test("G6: matplotlib 한글 이미지 → 카드·미리보기·스크린샷 →
   // 다운로드된 matplotlib을 사용자 코드 실행 전에 import해 폰트를 선적용하기 때문.
 
   // 출력 미리보기 탭 → 이미지 렌더 (선택 블록 없으면 최근 실행 블록)
+  await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click(); // 부록 P.7: 진단·미리보기는 속성 창 탭
   await page.getByRole("tab", { name: "출력 미리보기" }).click();
   const img = page.getByTestId("preview-image");
   await expect(img).toBeVisible({ timeout: 15_000 });
@@ -80,12 +81,11 @@ test("G6: matplotlib 한글 이미지 → 카드·미리보기·스크린샷 →
   expect(png.byteLength).toBeGreaterThan(5000); // 실제 차트 PNG인지
   writeFileSync("output/g6-korean-glyph.png", png);
 
-  // 변수 탭 — fig/ax 변수 표시 (실행 완료 시 자동 갱신)
-  // (주의: 편집기 구문 강조 span도 "fig"라 getByText는 다중 매치 — 변수 표의 셀로 한정)
+  // 속성 창(부록 P) 변수 목록 — fig/ax 변수 표시 (실행 완료 시 자동 갱신). 창은 위에서 이미 열었다
   await page.getByRole("tab", { name: "변수" }).click();
-  await expect(
-    page.locator("td").filter({ hasText: /^fig$/ }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("props-variables").locator('[data-var="fig"]')).toBeVisible({
+    timeout: 15_000,
+  });
 
   // 값 모드 전환 후 재실행 → 이미지는 값으로 펼칠 수 없음
   await page.evaluate(() => {
@@ -166,6 +166,7 @@ test("참조 삽입 바 + 진단 탭 스모크", async ({ page }) => {
     .poll(async () => (await cellAt(page, "0:3"))?.v, { timeout: 150_000, intervals: [1000] })
     .toBe("#PYTHON!");
 
+  await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click(); // 부록 P.7: 진단·미리보기는 속성 창 탭
   await page.getByRole("tab", { name: /진단/ }).click();
   await expect(page.getByText(/NameError/).first()).toBeVisible();
   await expect(page.getByRole("tab", { name: /진단/ })).toContainText("1");

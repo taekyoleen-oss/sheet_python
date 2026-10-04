@@ -77,7 +77,7 @@ test("키보드 전용: Ctrl+1 → 방향키 → Ctrl+Shift+P → 코드 → Ctr
     .toBe("data-grid-canvas");
 });
 
-test("800×600: 그리드↔Python↔결과 탭 전환 UI", async ({ page }) => {
+test("800×600: 그리드↔Python 탭 전환 UI + 속성 창", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto("/");
   await waitForApp(page);
@@ -91,9 +91,10 @@ test("800×600: 그리드↔Python↔결과 탭 전환 UI", async ({ page }) => 
   await expect(page.getByRole("tab", { name: "목차" })).toBeVisible(); // 좁은 화면: 목차는 네 번째 탭
   await expect(page.getByTestId("data-grid-canvas")).toHaveCount(0);
 
-  // 결과 탭 → 하단 패널 탭들
-  await tabs.getByRole("tab", { name: "결과" }).click();
+  // 부록 P.7: 하단 패널 대신 속성 창 — 좁은 화면에서도 오른쪽에서 덮으며 열린다
+  await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click();
   await expect(page.getByRole("tab", { name: /진단/ })).toBeVisible();
+  await page.getByRole("button", { name: "속성 창 닫기" }).click();
 
   // 그리드 복귀
   await tabs.getByRole("tab", { name: "그리드" }).click();

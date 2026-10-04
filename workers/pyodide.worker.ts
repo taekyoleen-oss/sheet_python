@@ -116,6 +116,11 @@ async function runInitScript(py: PyodideInterface): Promise<void> {
   } catch {
     // 무시
   }
+  try {
+    py.runPython("_pygrid_mark_baseline()"); // 부록 P: 변수 목록은 이 뒤에 생긴 것만
+  } catch {
+    // 무시
+  }
 }
 
 async function boot(msg: Extract<MainToWorker, { t: "boot" }>): Promise<void> {
@@ -425,6 +430,35 @@ function handleWriteFile(msg: Extract<MainToWorker, { t: "writeFile" }>): void {
   }
 }
 
+/** 부록 P: 폴더 목록 — 절대 경로로 정규화해 돌려준다 (Python 작업 폴더 = FS cwd) */
+function handleListDir(msg: Extract<MainToWorker, { t: "listDir" }>): void {
+  const py = pyodide;
+  if (!py) {
+    post({ t: "fileError", id: msg.id, message: "런타임이 아직 준비되지 않았습니다" });
+    return;
+  }
+  const FS = py.FS;
+  try {
+    const cwd = FS.cwd();
+    const path = FS.lookupPath(msg.path || cwd, {}).path || "/";
+    const entries = FS.readdir(path)
+      .filter((n) => n !== "." && n !== "..")
+      .map((name) => {
+        const st = FS.stat(`${path === "/" ? "" : path}/${name}`);
+        const dir = FS.isDir(st.mode);
+        return { name, dir, size: dir ? 0 : st.size };
+      })
+      .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+    post({ t: "dirListing", id: msg.id, cwd, path, entries });
+  } catch (err) {
+    post({
+      t: "fileError",
+      id: msg.id,
+      message: `폴더를 열 수 없습니다(${msg.path ?? "작업 폴더"}): ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
 function handleReadFile(msg: Extract<MainToWorker, { t: "readFile" }>): void {
   const py = pyodide;
   if (!py) {
@@ -476,6 +510,9 @@ async function dispatch(msg: MainToWorker): Promise<void> {
       return;
     case "readFile":
       handleReadFile(msg);
+      return;
+    case "listDir":
+      handleListDir(msg);
       return;
     default:
       return;

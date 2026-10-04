@@ -16,6 +16,7 @@ async function waitForApp(page: Page) {
   await page.waitForSelector('[data-testid="data-grid-canvas"]');
   await page.evaluate(() => {
     (window as any).__pygridStore.getState().newWorkbook();
+    (window as any).__pygridStore.getState().setGridCompact(false); // 부록 P.6: 셀 좌표 보정(88×34)은 기본 크기 보기 기준
   });
 }
 
@@ -353,6 +354,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
     .toBe("#PYTHON!");
   expect((await cellAt(page, "0:3"))?.v).toBe("a"); // 출력 #1은 정상 유지
 
+  await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click(); // 부록 P.7: 진단·미리보기는 속성 창 탭
   const diagTab = page.getByRole("tab", { name: /진단/ });
   await diagTab.click();
   const diag = page.getByTestId("diagnostics-tab");

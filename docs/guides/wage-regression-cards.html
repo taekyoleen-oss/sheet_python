@@ -1,0 +1,366 @@
+<title>PyGrid 임금 회귀 가이드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 레이아웃: 읽는 순서대로 놓인 4:5 카드 격자(넓으면 3열, 좁으면 1열). 카드 하나 = 메시지 하나 + 그림 하나 */
+:root {
+  --paper: #fdfcfa;        /* 앱 바탕과 같은 종이색 */
+  --card: #ffffff;
+  --ink: #23272e;
+  --ink-soft: #5d6673;
+  --rule: #e2e5e9;
+  --cellbg: #f6f8fa;
+  --py: #4a90c2;           /* Sky Blue — Python이 관여한 곳에만 */
+  --py-tint: #eaf3fa;
+  --py-ink: #1f5f8b;
+  --amber: #b9821f;
+  --font-display: "Fraunces", "IBM Plex Sans KR", Georgia, serif;
+  --font-body: "IBM Plex Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.45rem;
+  --step-3: 2.1rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #15181c; --card: #1d2126; --ink: #e8ebee; --ink-soft: #a3acb7; --rule: #323840;
+    --cellbg: #23282e; --py: #6aaad6; --py-tint: #1d3344; --py-ink: #9ccbea; --amber: #d9a441;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #15181c; --card: #1d2126; --ink: #e8ebee; --ink-soft: #a3acb7; --rule: #323840;
+  --cellbg: #23282e; --py: #6aaad6; --py-tint: #1d3344; --py-ink: #9ccbea; --amber: #d9a441;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--step-0); line-height: 1.6;
+  padding: 0 16px; padding-block: 32px 64px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+header.top { display: grid; gap: 6px; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: var(--step-1); letter-spacing: 0.01em; }
+.brand b { color: var(--py); font-weight: 700; }
+header.top p { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+
+.deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 20px; counter-reset: card; }
+.card {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+  aspect-ratio: 4 / 5; max-width: 100%;
+  padding: 22px 22px 18px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 10px;
+  min-width: 0; overflow: hidden; position: relative;
+}
+.kicker { display: flex; align-items: baseline; gap: 10px; font-size: var(--step--1); color: var(--ink-soft); letter-spacing: 0.04em; }
+.kicker .no { font-family: var(--font-display); font-size: 1.6rem; line-height: 1; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.card h2 { margin: 0; font-size: var(--step-2); line-height: 1.3; font-weight: 700; text-wrap: balance; }
+.card .body { min-width: 0; display: grid; gap: 10px; align-content: start; font-size: var(--step--1); }
+.card .body p { margin: 0; }
+.foot { font-size: 0.72rem; color: var(--ink-soft); border-top: 1px dashed var(--rule); padding-top: 8px; }
+.py { color: var(--py-ink); font-weight: 600; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--cellbg); border-radius: 4px; padding: 0.05em 0.35em; }
+pre {
+  margin: 0; font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.55;
+  background: var(--cellbg); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre;
+  border-left: 3px solid var(--py);
+}
+pre .c { color: var(--ink-soft); }
+pre .s { color: var(--amber); }
+
+/* 미니 스프레드시트 */
+.sheet { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
+.sheet table { border-collapse: collapse; font-family: var(--font-mono); font-size: 0.68rem; width: 100%; font-variant-numeric: tabular-nums; }
+.sheet th, .sheet td { border: 1px solid var(--rule); padding: 3px 6px; text-align: right; white-space: nowrap; }
+.sheet th { background: var(--cellbg); color: var(--ink-soft); font-weight: 400; text-align: center; }
+.sheet td.l { text-align: left; }
+.sheet td.ref { background: color-mix(in srgb, var(--py) 8%, transparent); }
+.sheet td.spill { background: var(--py-tint); color: var(--py-ink); }
+.sheet td.anchor { position: relative; background: var(--py-tint); color: var(--py-ink); font-weight: 600; }
+.sheet td.anchor::after {
+  content: "PY"; position: absolute; top: 1px; right: 1px; font-size: 0.5rem; line-height: 1;
+  background: var(--py); color: var(--card); padding: 1px 2px; border-radius: 2px;
+}
+.sheet td.fx { background: transparent; outline: 2px solid var(--amber); outline-offset: -2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.7rem; color: var(--ink-soft); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+/* 화면 구성 그림 */
+.layout { display: grid; grid-template-columns: 0.9fr 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; min-height: 180px; }
+.layout div { border: 1px solid var(--rule); border-radius: 6px; padding: 8px; font-size: 0.72rem; display: grid; align-content: start; gap: 2px; background: var(--cellbg); }
+.layout div b { font-size: 0.78rem; }
+.layout .pyz { background: var(--py-tint); border-color: color-mix(in srgb, var(--py) 40%, var(--rule)); }
+.layout .tall { grid-row: 1 / 3; }
+
+/* 숫자 타일 */
+.nums { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.num { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; }
+.num .v { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.num .k { font-size: 0.7rem; color: var(--ink-soft); }
+
+/* 단계 지도 */
+.steps { display: grid; gap: 4px; font-size: 0.74rem; }
+.steps div { display: grid; grid-template-columns: 4.6em 3.6em 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--rule); }
+.steps div:last-child { border-bottom: 0; }
+.steps .rng { font-family: var(--font-mono); color: var(--py-ink); }
+.flow { display: grid; gap: 6px; font-size: 0.76rem; }
+.flow div { display: grid; grid-template-columns: 1.6em 1fr; gap: 8px; align-items: start; }
+.flow .dot { width: 1.6em; height: 1.6em; border-radius: 50%; background: var(--py-tint); color: var(--py-ink); font-family: var(--font-mono); font-size: 0.72rem; display: grid; place-items: center; font-weight: 600; }
+
+/* 표지 */
+.cover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.cover .kicker, .cover .foot { color: color-mix(in srgb, var(--paper) 70%, transparent); }
+.cover .kicker .no { color: var(--paper); }
+.cover h2 { font-family: var(--font-display); font-size: var(--step-3); font-weight: 700; line-height: 1.15; }
+.cover h2 em { font-style: normal; color: var(--py); }
+.cover .foot { border-top-color: color-mix(in srgb, var(--paper) 25%, transparent); }
+.cover .sheet { border-color: color-mix(in srgb, var(--paper) 20%, transparent); }
+.cover .sheet th, .cover .sheet td { border-color: color-mix(in srgb, var(--paper) 18%, transparent); }
+.cover .sheet th { background: transparent; color: color-mix(in srgb, var(--paper) 60%, transparent); }
+.cover .sheet td { color: var(--paper); }
+.cover .sheet td.spill, .cover .sheet td.anchor { color: var(--ink); }
+
+footer.end { color: var(--ink-soft); font-size: var(--step--1); }
+@media (prefers-reduced-motion: no-preference) {
+  .card { transition: transform 160ms ease, border-color 160ms ease; }
+  .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--py) 45%, var(--rule)); }
+}
+@media (max-width: 420px) { .card { aspect-ratio: auto; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">Py<b>Grid</b> Studio · 예제 가이드</div>
+    <p>첫 화면에 열리는 <strong>임금 회귀 예측</strong> 워크북을 따라가며, Python 계산 결과가 스프레드시트 셀이 되는 과정과 앱 사용법을 카드 13장으로 정리했습니다. 카드는 읽는 순서대로 놓여 있습니다.</p>
+  </header>
+
+  <main class="deck">
+
+    <!-- 1 -->
+    <article class="card cover">
+      <div class="kicker"><span class="no">01</span>임금 회귀 예측 · 16단계</div>
+      <h2>534명의 시간당 임금,<br><em>Python</em>으로 계산하고<br>셀에서 읽는다</h2>
+      <div class="body">
+        <p>CPS 1985 임금 조사(534행 × 11열)로 학력·경력·성별 같은 특성 10개에서 <code style="background:transparent;color:inherit">WAGE</code>를 예측합니다. 계산은 Python 블록이 하고, 결과는 엑셀처럼 시트의 셀에 놓입니다.</p>
+        <div class="sheet" aria-hidden="true">
+          <table>
+            <tr><th></th><th>A</th><th>F</th><th>…</th><th>N</th><th>O</th><th>P</th></tr>
+            <tr><th>1</th><td>EDUCATION</td><td>WAGE</td><td></td><td class="anchor l">변수</td><td class="spill l">계수</td><td class="spill l">p값</td></tr>
+            <tr><th>2</th><td>8</td><td>5.10</td><td></td><td class="spill l">EDUCATION</td><td class="spill">…</td><td class="spill">…</td></tr>
+            <tr><th>3</th><td>9</td><td>4.95</td><td></td><td class="spill l">EXPERIENCE</td><td class="spill">…</td><td class="spill">…</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="foot">앱을 처음 열면 이 워크북이 바로 보입니다 · 파일 ▸ 샘플 워크북 ▸ 통계분석에서도 다시 열 수 있습니다</div>
+    </article>
+
+    <!-- 2 -->
+    <article class="card">
+      <div class="kicker"><span class="no">02</span>화면 구성</div>
+      <h2>왼쪽은 작게 보는 시트, 가운데는 코드, 오른쪽은 속성 창</h2>
+      <div class="body">
+        <div class="layout" aria-label="앱 화면 배치">
+          <div class="tall"><b>스프레드시트</b>작게 보기(보조)<br>필요하면 전체 화면</div>
+          <div class="pyz tall"><b>Python 블록</b>단계별 코드 카드<br>▶ 실행 · 출력 설정<br>화면 높이 전부를 코드에</div>
+          <div><b>속성 · 위</b>변수 · 콘솔 · 진단</div>
+          <div><b>속성 · 아래</b>파일 · 출력 미리보기</div>
+        </div>
+        <p>블록 하나가 단계 하나입니다. 블록마다 결과를 놓을 <strong>앵커 셀</strong>이 있고, 시트에서는 <span class="py">PY</span> 배지로 표시됩니다. 하단 패널이 없어 세로 공간은 시트와 코드가 모두 씁니다.</p>
+      </div>
+      <div class="foot">시트 탭 줄 오른쪽 끝: 크게/작게 보기 · 전체 화면(Esc로 복귀) · 셸 바 오른쪽 끝 또는 Ctrl+Alt+3: 속성 창</div>
+    </article>
+
+    <!-- 3 -->
+    <article class="card">
+      <div class="kicker"><span class="no">03</span>데이터</div>
+      <h2>데이터는 시트에 있다 — 외부 파일 없이 끝까지 돈다</h2>
+      <div class="body">
+        <div class="sheet">
+          <table>
+            <tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>F</th><th>K</th></tr>
+            <tr><th>1</th><td class="ref l">EDUCATION</td><td class="ref l">SOUTH</td><td class="ref l">SEX</td><td class="ref l">EXPERIENCE</td><td class="ref l">WAGE</td><td class="ref l">MARR</td></tr>
+            <tr><th>2</th><td class="ref">8</td><td class="ref">0</td><td class="ref">1</td><td class="ref">21</td><td class="ref">5.10</td><td class="ref">1</td></tr>
+            <tr><th>3</th><td class="ref">9</td><td class="ref">0</td><td class="ref">1</td><td class="ref">42</td><td class="ref">4.95</td><td class="ref">1</td></tr>
+            <tr><th>⋮</th><td class="ref">⋮</td><td class="ref">⋮</td><td class="ref">⋮</td><td class="ref">⋮</td><td class="ref">⋮</td><td class="ref">⋮</td></tr>
+            <tr><th>535</th><td class="ref"></td><td class="ref"></td><td class="ref"></td><td class="ref"></td><td class="ref"></td><td class="ref"></td></tr>
+          </table>
+        </div>
+        <p><code>wage</code> 시트 <code>A1:K535</code>가 원자료이고, <code>meta</code> 시트는 <code>RACE</code> 1=기타·2=히스패닉·3=백인 같은 <strong>코드북</strong>입니다. 숫자처럼 보여도 7개 열은 범주형이라는 사실이 5단계의 근거가 됩니다.</p>
+      </div>
+      <div class="foot">블록이 읽은 범위는 시트에 옅은 하늘색으로 표시됩니다</div>
+    </article>
+
+    <!-- 4 -->
+    <article class="card">
+      <div class="kicker"><span class="no">04</span>시트 → Python</div>
+      <h2><code>xl()</code> 한 줄이 시트 범위를 DataFrame으로 바꾼다</h2>
+      <div class="body">
+<pre><span class="c"># 1단계 블록의 첫 줄</span>
+df = xl(<span class="s">"wage!A1:K535"</span>, headers=True)
+print(<span class="s">"shape:"</span>, df.shape)   <span class="c"># (534, 11)</span></pre>
+        <p><code>headers=True</code>면 첫 행이 열 이름이 됩니다. 앱은 코드에서 <code>xl("…")</code> 참조를 읽어 <strong>의존 관계</strong>를 만듭니다. 시트의 값을 고치면 그 범위를 읽는 블록만 다시 실행됩니다.</p>
+        <p>범위는 시트에서 드래그한 뒤 블록의 <strong>참조 삽입</strong>으로 넣을 수 있습니다. 행을 삽입하면 <code>xl("A1:K535")</code>도 <code>A1:K536</code>으로 함께 고쳐집니다.</p>
+      </div>
+      <div class="foot">Excel의 Python in Excel과 같은 <code>xl()</code> 규칙 · 인수는 문자열 리터럴만</div>
+    </article>
+
+    <!-- 5 -->
+    <article class="card">
+      <div class="kicker"><span class="no">05</span>Python → 시트</div>
+      <h2>마지막 줄의 값이 앵커 셀부터 표로 펼쳐진다</h2>
+      <div class="body">
+<pre><span class="c"># 11단계 블록의 마지막 줄</span>
+out.round(4)      <span class="c"># 변수·계수·표준오차·p값·VIF</span></pre>
+        <div class="sheet">
+          <table>
+            <tr><th></th><th>N</th><th>O</th><th>P</th><th>Q</th></tr>
+            <tr><th>173</th><td class="anchor l">변수</td><td class="spill l">계수</td><td class="spill l">표준오차</td><td class="spill l">p값</td></tr>
+            <tr><th>174</th><td class="spill l">const</td><td class="spill">…</td><td class="spill">…</td><td class="spill">…</td></tr>
+            <tr><th>175</th><td class="spill l">EDUCATION</td><td class="spill">…</td><td class="spill">…</td><td class="spill">…</td></tr>
+          </table>
+        </div>
+        <div class="legend"><span><i style="background:var(--py)"></i>앵커(PY)</span><span><i style="background:var(--py-tint)"></i>spill 영역 — 직접 편집 잠김</span></div>
+        <p>DataFrame은 머리글과 함께, 숫자는 한 칸에 놓입니다. 차트는 <strong>객체 모드</strong>로 셀 위 카드가 되고, 다른 셀과 겹치면 <code>#SPILL!</code>이 납니다.</p>
+      </div>
+      <div class="foot">블록의 「출력 추가」로 한 블록의 여러 변수를 다른 셀에 나눠 놓을 수 있습니다</div>
+    </article>
+
+    <!-- 6 -->
+    <article class="card">
+      <div class="kicker"><span class="no">06</span>16단계 지도</div>
+      <h2>분석은 다섯 묶음을 차례로 지난다</h2>
+      <div class="body">
+        <div class="steps">
+          <div><span class="rng">1–4</span><b>통계분석</b><span>품질 점검 · 타깃 분포 · 상관 · 집단 비교(ANOVA)</span></div>
+          <div><span class="rng">5–7</span><b>전처리</b><span>코드북으로 범주형 구분 · 결측/이상치 · 원-핫·분할·표준화</span></div>
+          <div><span class="rng">8–10</span><b>특성공학</b><span>구간화 · η² 변수 선별 · 파생변수·다항</span></div>
+          <div><span class="rng">11–13</span><b>회귀 모델</b><span>OLS·VIF · Ridge/Lasso/ElasticNet · 다항·로그</span></div>
+          <div><span class="rng">14–16</span><b>모델 평가</b><span>비교표·5겹 교차검증 · 잔차 진단 · 임금 밴드</span></div>
+        </div>
+        <p>단계마다 <strong>설명 블록</strong>(무엇을, 왜)과 <strong>코드 블록</strong>이 짝을 이룹니다. 목차 패널을 열면 단계로 바로 이동합니다.</p>
+      </div>
+      <div class="foot">같은 다섯 묶음이 「코드 삽입 ▸ 통계분석」의 예제 분류와 같습니다</div>
+    </article>
+
+    <!-- 7 -->
+    <article class="card">
+      <div class="kicker"><span class="no">07</span>셀에 남는 숫자</div>
+      <h2>단계마다 다음 결정을 정하는 숫자가 셀에 남는다</h2>
+      <div class="body">
+        <div class="nums">
+          <div class="num"><span class="v">1.70 → 0.10</span><span class="k">2단계 · WAGE 왜도, 로그 변환 전후</span></div>
+          <div class="num"><span class="v">0.978</span><span class="k">3단계 · AGE–EXPERIENCE 상관</span></div>
+          <div class="num"><span class="v">10 → 16열</span><span class="k">7단계 · 원-핫 뒤 설계행렬</span></div>
+          <div class="num"><span class="v">0.2583</span><span class="k">14단계 · 1위 다항(2차) test R²</span></div>
+        </div>
+        <p>왜도가 크니 로그 모형을 후보에 넣고, 상관이 0.978이라 규제 회귀가 필요하다는 식으로, 앞 단계의 숫자가 다음 단계의 선택을 설명합니다.</p>
+      </div>
+      <div class="foot">R²가 0.26 안팎인 것은 정상입니다 — 특성 10개로는 임금의 대부분이 설명되지 않습니다</div>
+    </article>
+
+    <!-- 8 -->
+    <article class="card">
+      <div class="kicker"><span class="no">08</span>실행</div>
+      <h2>▶ 전체 실행 한 번이면 1단계부터 16단계까지</h2>
+      <div class="body">
+        <div class="flow">
+          <div><span class="dot">1</span><span>Python 패널 머리의 <strong>▶ 전체 실행</strong>을 누릅니다. 첫 실행은 Pyodide와 scikit-learn을 받느라 수십 초 걸리고, 이후에는 캐시됩니다.</span></div>
+          <div><span class="dot">2</span><span>블록은 <code>xl()</code> 의존 순서대로, 같은 순위면 시트·행·열 순으로 돕니다.</span></div>
+          <div><span class="dot">3</span><span>오류는 앵커에 <code>#PYTHON!</code>으로 표시되고, 속성 창 <strong>진단</strong> 탭에 한국어 요약이 나옵니다. <code>print</code> 출력은 <strong>콘솔</strong> 탭에 쌓입니다.</span></div>
+          <div><span class="dot">4</span><span>코드를 고친 블록은 자동 모드에서 바로 다시 돌고, 결과 셀만 바뀝니다.</span></div>
+        </div>
+      </div>
+      <div class="foot">수동 모드로 바꾸면 고친 블록에 배지만 붙고, 원할 때 실행합니다</div>
+    </article>
+
+    <!-- 9 -->
+    <article class="card">
+      <div class="kicker"><span class="no">09</span>결과 위에 엑셀 수식 · 예시</div>
+      <h2>Python 결과 셀을 엑셀 수식으로 다시 쓴다</h2>
+      <div class="body">
+        <div class="sheet">
+          <table>
+            <tr><th></th><th>R</th><th>S</th></tr>
+            <tr><th>1</th><td class="spill">0.2583</td><td class="fx l">=IF(R1&gt;=0.25,"채택","보류")</td></tr>
+            <tr><th>2</th><td class="l">유의 계수</td><td class="fx l">=COUNTIF(유의,"○")</td></tr>
+          </table>
+        </div>
+        <p>spill된 셀은 보통 셀처럼 참조할 수 있습니다. 수식 입력줄에서 <code>=COU</code>까지 치면 함수가 자동완성되고, 이름 상자에 <code>유의</code>를 입력하면 선택 범위에 이름이 붙습니다.</p>
+        <p>함수 60종(IF·SUMIFS·VLOOKUP·INDEX/MATCH 등), <code>$</code> 절대참조, 복사·잘라내기·채우기 핸들, 행 삽입 시 참조 자동 조정이 엑셀과 같게 동작합니다.</p>
+      </div>
+      <div class="foot">Python이 다시 실행되어 값이 바뀌면 그 셀을 쓰는 수식도 따라 다시 계산됩니다</div>
+    </article>
+
+    <!-- 10 -->
+    <article class="card">
+      <div class="kicker"><span class="no">10</span>모델 결과 → 시트</div>
+      <h2>코드를 고치지 않고 모델의 R²·계수·예측을 셀로 꺼낸다</h2>
+      <div class="body">
+        <p>11단계 블록은 statsmodels 결과를 <code>res</code>에 담습니다. 블록의 <strong>「모델 결과 → 시트」</strong>를 열면 이 모델에 있는 속성이 현재 값·코드와 함께 나열됩니다.</p>
+<pre>res.rsquared                <span class="c"># 결정계수 R²</span>
+res.summary2().tables[1]    <span class="c"># 계수표</span>
+res.fittedvalues            <span class="c"># 적합값 534개</span></pre>
+        <p>열 이름으로 학습한 모델이면 데이터셋을 골라 <code>predict</code> 결과도 셀로 보낼 수 있습니다. 체크한 항목은 셀에 놓이고 블록이 다시 돌 때마다 갱신됩니다. 코드는 복사하거나 새 블록으로 보내 직접 고쳐 쓸 수 있습니다. 모델 종류마다 목록이 달라서, 로지스틱엔 오즈비, 트리엔 특성 중요도가 나옵니다.</p>
+      </div>
+      <div class="foot">R의 summary·coef·predict(interval=) 흐름 · 신뢰/예측구간과 R²·RMSE·MAE 평가도 고를 수 있습니다</div>
+    </article>
+
+    <!-- 11 -->
+    <article class="card">
+      <div class="kicker"><span class="no">11</span>속성 창</div>
+      <h2>RStudio처럼 오른쪽에서 열리는 작업대 — 변수·콘솔·진단 / 파일·미리보기</h2>
+      <div class="body">
+        <div class="sheet">
+          <table>
+            <tr><th class="l" style="text-align:left">이름</th><th>타입</th><th>크기</th></tr>
+            <tr><td class="l">df</td><td class="l">DataFrame</td><td>534×11</td></tr>
+            <tr><td class="l">res</td><td class="l spill">OLSResults</td><td></td></tr>
+            <tr><td class="l">out</td><td class="l">DataFrame</td><td>17×7</td></tr>
+          </table>
+        </div>
+        <p>변수 탭에는 <strong>실행으로 만든 변수만</strong> 나옵니다. 클릭하면 세부 내용 팝업(상위 100행·열 형·요약 통계, 모델이면 속성 목록)이 뜨고, 거기서 <strong>스프레드시트에 보이기</strong>(연결 출력 또는 값 복사, 열·상위 N행·index 선택)로 이어집니다. 모델 변수는 하늘색입니다.</p>
+        <p>아래 파일 영역은 탐색기처럼 폴더를 오가고, <strong>이 폴더를 작업 폴더로</strong>를 누르면 <code>os.chdir("…")</code> 코드로 Python의 현재 폴더가 바뀝니다.</p>
+      </div>
+      <div class="foot">오른쪽에서 밀려 나오고 들어갑니다 · 핀 버튼으로 옆에 고정하거나 위에 겹치기 · 가장자리를 끌어 너비 조절</div>
+    </article>
+
+    <!-- 12 -->
+    <article class="card">
+      <div class="kicker"><span class="no">12</span>데이터 불러오기</div>
+      <h2>시트로 불러오거나, 파일을 Python으로 직접 읽거나</h2>
+      <div class="body">
+        <div class="flow">
+          <div><span class="dot">A</span><span><strong>시트로</strong> — 파일 ▸ 데이터 불러오기 또는 붙여넣기로 새 시트에 넣고 <code>xl()</code>로 읽습니다. 이 예제가 쓰는 방식입니다.</span></div>
+          <div><span class="dot">B</span><span><strong>Python으로</strong> — 속성 창 파일 영역에 올린 파일을 고르고 <strong>불러오기</strong>를 누르면 아래 블록이 생깁니다. ▶ 실행하면 변수가 생기고 미리보기가 셀에 펼쳐집니다.</span></div>
+        </div>
+<pre><span class="c"># 속성 창 ▸ wage.csv ▸ 불러오기</span>
+import pandas as pd
+wage = pd.read_csv(<span class="s">"wage.csv"</span>)
+wage.head(20)</pre>
+      </div>
+      <div class="foot">경로는 작업 폴더 기준 상대 경로로 들어갑니다 · csv·xlsx·json·parquet·pkl·txt 지원</div>
+    </article>
+
+    <!-- 13 -->
+    <article class="card">
+      <div class="kicker"><span class="no">13</span>내 데이터로</div>
+      <h2>머리말 네 줄만 바꾸면 다른 표에서도 같은 16단계</h2>
+      <div class="body">
+<pre>df = xl(<span class="s">"wage!A1:K535"</span>, headers=True)
+TARGET = <span class="s">"WAGE"</span>
+CAT = [<span class="s">"SOUTH"</span>, <span class="s">"SEX"</span>, <span class="s">"UNION"</span>, …]  <span class="c"># 범주형</span>
+NUM = [<span class="s">"EDUCATION"</span>, <span class="s">"EXPERIENCE"</span>, <span class="s">"AGE"</span>]</pre>
+        <p>코드는 열 이름을 직접 쓰지 않고 이 네 줄에서 끌어 씁니다. 보험 계약·청구·경험 데이터 표 4종에서도 그대로 돌아가는지 검증했습니다.</p>
+        <p>작업은 <code>.pygrid.json</code>으로 저장하고, XLSX로 내보내면 값과 수식이 함께 실립니다.</p>
+      </div>
+      <div class="foot">코드 삽입 ▸ 통계분석에서 단계별 조각을 골라 새 표에 붙일 수도 있습니다</div>
+    </article>
+
+  </main>
+  <footer class="end">PyGrid Studio · 부록 N(임금 회귀 예측)·O(스프레드시트·모델 결과)·P(속성 창) 기준</footer>
+</div>

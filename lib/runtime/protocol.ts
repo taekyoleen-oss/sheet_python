@@ -174,7 +174,9 @@ export type MainToWorker =
   /** Pyodide FS에 파일 기록. path는 경로 없는 파일 이름만(클라이언트가 검증). bytes는 transferable */
   | { t: "writeFile"; id: number; path: string; bytes: ArrayBuffer }
   /** Pyodide FS에서 파일 읽기 → fileRead(bytes transferable) / 없으면 fileError */
-  | { t: "readFile"; id: number; path: string };
+  | { t: "readFile"; id: number; path: string }
+  /** 속성 창 탐색기(부록 P): 폴더 목록. path 생략 시 Python 작업 폴더(os.getcwd()) → dirListing */
+  | { t: "listDir"; id: number; path?: string };
 
 // ── 워커 → 메인 ──────────────────────────────────────────
 
@@ -199,8 +201,17 @@ export type WorkerToMain =
   | { t: "resetDone"; id: number }
   | { t: "fileWritten"; id: number }
   | { t: "fileRead"; id: number; bytes: ArrayBuffer }
-  /** writeFile/readFile 실패(파일 없음·FS 오류 등). 한국어 메시지 */
+  | { t: "dirListing"; id: number; cwd: string; path: string; entries: DirEntry[] }
+  /** writeFile/readFile/listDir 실패(파일 없음·FS 오류 등). 한국어 메시지 */
   | { t: "fileError"; id: number; message: string };
+
+/** 폴더 항목 (listDir) */
+export interface DirEntry {
+  name: string;
+  dir: boolean;
+  /** 바이트 (폴더는 0) */
+  size: number;
+}
 
 export const DEFAULT_PYODIDE_INDEX_URL =
   "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/";

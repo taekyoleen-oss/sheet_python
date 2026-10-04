@@ -56,6 +56,7 @@
 | `run` | id, blockId, code, snapshots, outputMode, includeIndex, **output?**, **outputs?** | 블록 실행: 스냅샷 주입 → 실행 → 출력 선택 → §3.3 변환. `outputs`가 있으면 다중 출력 경로(아래) |
 | `repl` | id, code | 콘솔 실행(공유 네임스페이스) |
 | `inspect` | id | 전역 변수 목록 |
+| `listDir` | id, path? | 부록 P 속성 창 탐색기: 폴더 목록 (path 생략 = Python 작업 폴더) → `dirListing` / `fileError` |
 | `resetRuntime` | id, initScript | 워커 안 best-effort 리셋(사용자 전역 삭제 → 초기화 스크립트 재실행) |
 | `writeFile` | id, path, bytes: ArrayBuffer | Pyodide FS에 파일 기록(`FS.writeFile`). bytes는 **transferable**. path 검증은 클라이언트 담당 |
 | `readFile` | id, path | FS 파일 읽기 → `fileRead` / 실패 시 `fileError` |
@@ -72,6 +73,7 @@
 | `analyzeError` | id, message | `xl() 인수는 문자열 리터럴이어야 합니다` / `xl() headers 인수는 True/False 리터럴이어야 합니다` / `구문 오류: …` |
 | `result` | id, blockId + RunPayload | run 결과(아래 "run 변환 결과" 참조). 실패: errorType(예외 클래스명)·message·traceback·durationMs |
 | `replResult` | id, repr, stdout:'', stderr:'', traceback? | repr = 마지막 표현식의 `repr()`, None이면 null. stdout/stderr 필드는 빈 문자열(이미 스트리밍됨) |
+| `dirListing` | id, cwd, path, entries: DirEntry[] | `{name, dir, size}` — 폴더 먼저·이름순. path는 워커가 절대 경로로 정규화 |
 | `variables` | id, vars: VariableInfo[] | name·type·shape(2D만)·summary(repr ≤80자). 모듈·함수·클래스·`_` 이름 제외. 부록 O.5: 2D 표는 `columns`(≤500), 적합된 statsmodels 결과·scikit-learn 추정기(비지도 포함)는 `model: ModelInfo`(kind·formula·intervals·predict·proba·featureNames·members[{group,label,expr,code,preview,shape}] — 모델에 실제로 있는 항목만, expr=출력 식, code=라이브러리 원래 코드) |
 | `resetDone` | id | 리셋 완료 |
 | `fileWritten` | id | writeFile 성공 |

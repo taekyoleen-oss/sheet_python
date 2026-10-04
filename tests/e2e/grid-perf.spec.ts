@@ -85,6 +85,7 @@ test("Ctrl+Z / Ctrl+Y로 실행 취소·다시 실행이 된다", async ({ page 
   await page.evaluate(() => {
     const store = (window as any).__pygridStore;
     store.getState().newWorkbook();
+    store.getState().setGridCompact(false); // 부록 P.6: 기본 크기 보기 기준
     const state = store.getState();
     state.setCellValue(state.workbook.sheets[0].id, 0, 0, { v: "이전", t: "s" });
   });

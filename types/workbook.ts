@@ -147,6 +147,11 @@ export interface Workbook {
   version: 1;
   title: string;
   sheets: Sheet[];
+  /**
+   * 부록 P: Python 작업 폴더 (속성 창에서 지정). 런타임이 준비될 때마다
+   * `os.makedirs(…); os.chdir(…)` 코드로 적용된다. 선택 필드 — 기존 워크북 호환.
+   */
+  workDir?: string;
   /** 정의된 이름 (선택 필드 — 기존 워크북 호환) */
   names?: DefinedName[];
   pyBlocks: PyBlock[];
