@@ -40,7 +40,8 @@ export default function RootLayout({
     >
       <body className="antialiased">
         {children}
-        <Toaster />
+        {/* 부록 P.7: 오른쪽 속성 창·아래 시트 탭 줄을 가리지 않도록 위쪽 가운데 */}
+        <Toaster position="top-center" />
         {/* glide-data-grid 오버레이 편집기 포털 — 없으면 셀 타이핑 편집이 조용히 실패한다 */}
         <div id="portal" />
       </body>

@@ -115,7 +115,6 @@ export default function SheetGrid() {
       cur.width === storeSelection.c1 - storeSelection.c0 + 1 &&
       cur.height === storeSelection.r1 - storeSelection.r0 + 1;
     if (!same) {
-      editorRef.current?.scrollTo(storeSelection.c0, storeSelection.r0); // 이름 상자·이름 이동
       setGridSelection({
         columns: CompactSelection.empty(),
         rows: CompactSelection.empty(),
@@ -133,6 +132,16 @@ export default function SheetGrid() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeSelection]); // gridSelection 의도적 제외 — glide발 변경은 same으로 걸러져 루프 없음
+
+  // 이름 상자 이동만 그 셀로 스크롤한다 — 다른 경로(블록 실행·앵커 이동)의 선택 변경은 화면을 움직이지 않는다
+  useEffect(() => {
+    const onGo = (e: Event) => {
+      const { r, c } = (e as CustomEvent<{ r: number; c: number }>).detail;
+      editorRef.current?.scrollTo(c, r);
+    };
+    window.addEventListener("pygrid:goto", onGo);
+    return () => window.removeEventListener("pygrid:goto", onGo);
+  }, []);
 
   // canvas는 CSS 변수를 못 쓰므로 body에서 실제 폰트 패밀리를 읽는다
   const [fontFamily, setFontFamily] = useState("Pretendard, sans-serif");

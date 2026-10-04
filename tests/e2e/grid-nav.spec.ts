@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// 부록 P.6: 기본 분할이 시트 40%라, 셀 좌표로 누르는 이 스펙은 넓은 창에서 돌린다
+test.use({ viewport: { width: 1600, height: 900 } });
+
 // 엑셀식 그리드 탐색: Ctrl+방향키 / Ctrl+Shift+방향키 / 선택 가장자리 Shift+더블클릭
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -26,6 +29,7 @@ async function setup(page: Page) {
     for (let r = 0; r < 5; r++)
       for (let c = 0; c < 3; c++) st.setCellValue(sid, r, c, { v: r * 10 + c, t: "n" });
   });
+  await page.waitForTimeout(300); // 크기 전환 뒤 격자 다시 그리기를 기다린 다음 좌표를 잰다
 }
 
 const selection = (page: Page) =>

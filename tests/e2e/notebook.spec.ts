@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// 부록 P.6: 기본 분할이 시트 40%라, 셀 좌표로 누르는 이 스펙은 넓은 창에서 돌린다
+test.use({ viewport: { width: 1920, height: 1080 } });
+
 // v1.1 노트북 기능: 출력 위치 지정(앵커 재지정) · 출력 선택(변수·열·행) ·
 // 마크다운 블록 · 목차 · 블록 접기 · Colab 스타일 셀 툴바(↑↓ 자리 교환).
 // 실제 런타임을 쓰므로 한 테스트로 묶어 부트를 1회만 치른다.
@@ -18,6 +21,7 @@ async function waitForApp(page: Page) {
     (window as any).__pygridStore.getState().newWorkbook();
     (window as any).__pygridStore.getState().setGridCompact(false); // 부록 P.6: 셀 좌표 보정(88×34)은 기본 크기 보기 기준
   });
+  await page.waitForTimeout(300); // 크기 전환 뒤 격자 다시 그리기를 기다린 다음 좌표를 잰다
 }
 
 const cellAt = (page: Page, key: string) =>

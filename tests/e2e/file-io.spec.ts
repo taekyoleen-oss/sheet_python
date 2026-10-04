@@ -38,7 +38,7 @@ test("저장 다운로드 → 새 워크북 → 다시 열기 → 셀·블록 �
 
   // 저장 (.pygrid.json) 다운로드
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "파일" }).click();
+  await page.getByRole("button", { name: "파일", exact: true }).click();
   await page.getByRole("menuitem", { name: "저장 (.pygrid.json)" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("왕복검증.pygrid.json");
@@ -74,7 +74,7 @@ test("XLSX 내보내기 다운로드", async ({ page }) => {
     st.setCellValue(st.workbook.sheets[0].id, 0, 0, { v: 42, t: "n" });
   });
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "파일" }).click();
+  await page.getByRole("button", { name: "파일", exact: true }).click();
   await page.getByRole("menuitem", { name: "XLSX로 내보내기 (전 시트)" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.xlsx$/);

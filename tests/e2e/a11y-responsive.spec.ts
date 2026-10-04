@@ -94,7 +94,7 @@ test("800×600: 그리드↔Python 탭 전환 UI + 속성 창", async ({ page })
   // 부록 P.7: 하단 패널 대신 속성 창 — 좁은 화면에서도 오른쪽에서 덮으며 열린다
   await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click();
   await expect(page.getByRole("tab", { name: /진단/ })).toBeVisible();
-  await page.getByRole("button", { name: "속성 창 닫기" }).click();
+  await page.getByTestId("properties-panel").getByRole("button", { name: "속성 창 닫기" }).click();
 
   // 그리드 복귀
   await tabs.getByRole("tab", { name: "그리드" }).click();

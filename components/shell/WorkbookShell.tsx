@@ -432,7 +432,7 @@ export default function WorkbookShell() {
         ) : (
           /* 부록 P.7: 하단 패널 없음 — 진단·미리보기·콘솔은 오른쪽 속성 창 탭.
              접힌 패널은 그룹 밖 세로 스트립으로 대체 — Panel은 Group의 직계 자식이어야 한다 */
-          <div className="flex min-h-0 flex-1">
+          <div data-testid="workspace" className="flex min-h-0 flex-1">
             {gridCollapsed && <CollapsedStrip panel="grid" label="시트" />}
             <ResizablePanelGroup
               key={`${restored ? "r" : "i"}-${gridCollapsed ? "no-grid" : "grid"}-${pyCollapsed ? "no-py" : "py"}-${tocOpen ? "toc" : "no-toc"}-${aiChatOpen ? "ai" : "no-ai"}`}

@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// 부록 P.6: 기본 분할이 시트 40%라, 셀 좌표로 누르는 이 스펙은 넓은 창에서 돌린다
+test.use({ viewport: { width: 1600, height: 900 } });
+
 // 부록 I 미니 수식: 입력→계산→자동 갱신, SUM, 편집 재진입 원문, #DIV/0! hover,
 // 수식→Python 자동 재실행(실런타임), .pygrid.json 왕복 fx 보존
 
@@ -15,6 +18,7 @@ async function waitForApp(page: Page) {
   await page.evaluate(() => (window as any).__pygridStore.getState().newWorkbook());
   // 부록 P.6: 셀 좌표 보정(88×34)은 기본 크기 보기 기준
   await page.evaluate(() => (window as any).__pygridStore.getState().setGridCompact(false));
+  await page.waitForTimeout(300); // 크기 전환 뒤 격자 다시 그리기를 기다린 다음 좌표를 잰다
 }
 
 const cellAt = (page: Page, key: string) =>
@@ -178,7 +182,7 @@ test(".pygrid.json 저장 → 열기에 fx가 보존되고 다시 계산 가능�
   expect((await cellAt(page, "0:1"))?.v).toBe(2);
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "파일" }).click();
+  await page.getByRole("button", { name: "파일", exact: true }).click();
   await page.getByRole("menuitem", { name: "저장 (.pygrid.json)" }).click();
   const savedPath = testInfo.outputPath("formula.pygrid.json");
   await (await downloadPromise).saveAs(savedPath);

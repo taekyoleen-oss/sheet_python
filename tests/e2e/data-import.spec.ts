@@ -20,7 +20,7 @@ async function waitForApp(page: Page) {
 
 /** 파일 메뉴 → 데이터 불러오기 → 샘플 데이터셋 → 항목 클릭 → 옵션 다이얼로그 대기 */
 async function openSampleDialog(page: Page, item: RegExp) {
-  await page.getByRole("button", { name: "파일" }).click();
+  await page.getByRole("button", { name: "파일", exact: true }).click();
   await page.getByRole("menuitem", { name: "데이터 불러오기" }).hover();
   await page.getByRole("menuitem", { name: "샘플 데이터셋" }).hover();
   await page.getByRole("menuitem", { name: item }).click();

@@ -143,7 +143,11 @@ test("셀 클릭 직후 초고속 타이핑에도 첫 글자가 유실되지 않
       typeof (window as any).__pygridStore !== "undefined" &&
       (window as any).__pygridReady === true,
   );
-  await page.evaluate(() => (window as any).__pygridStore.getState().newWorkbook());
+  await page.evaluate(() => {
+    (window as any).__pygridStore.getState().newWorkbook();
+    (window as any).__pygridStore.getState().setGridCompact(false); // 부록 P.6: 88×34 기준
+  });
+  await page.waitForTimeout(300);
   // 캔버스 좌표 보정: 임의 지점 클릭 → 선택된 셀로 원점 역산 (행 34px·열 88px)
   const box = (await page.locator('[data-testid="data-grid-canvas"]').boundingBox())!;
   await page.mouse.click(box.x + 200, box.y + 100);

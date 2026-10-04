@@ -137,7 +137,7 @@ test("셀 서식: 굵게+크기 적용 → 저장/열기 왕복 보존 → 굵�
 
   // 저장 → 새 워크북 → 열기: st 보존
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "파일" }).click();
+  await page.getByRole("button", { name: "파일", exact: true }).click();
   await page.getByRole("menuitem", { name: "저장 (.pygrid.json)" }).click();
   const savedPath = testInfo.outputPath("style.pygrid.json");
   await (await downloadPromise).saveAs(savedPath);

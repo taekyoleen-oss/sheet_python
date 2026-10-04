@@ -26,7 +26,7 @@ test("스프레드시트 감추기 → Python이 폭 대부분 → 스트립으�
   await page.goto("/");
   await waitForApp(page);
 
-  const mainWidth = await widthOf(page, "#main");
+  const mainWidth = await widthOf(page, '[data-testid="workspace"]');
   await page.getByRole("button", { name: "스프레드시트 감추기 (Ctrl+Alt+1)" }).click();
 
   await expect(page.getByTestId("data-grid-canvas")).toHaveCount(0);
@@ -41,14 +41,14 @@ test("스프레드시트 감추기 → Python이 폭 대부분 → 스트립으�
   await strip.click();
   await expect(page.getByTestId("data-grid-canvas")).toBeVisible();
   await expect(page.getByTestId("strip-grid")).toHaveCount(0);
-  expect(await widthOf(page, "#python")).toBeLessThan(mainWidth * 0.6);
+  expect(await widthOf(page, "#python")).toBeLessThan(mainWidth * 0.75); // 기본 40:60으로 복원
 });
 
 test("Python 감추기(Ctrl+Alt+2) → 그리드가 폭 대부분 → 스트립으로 복원", async ({ page }) => {
   await page.goto("/");
   await waitForApp(page);
 
-  const mainWidth = await widthOf(page, "#main");
+  const mainWidth = await widthOf(page, '[data-testid="workspace"]');
   await page.keyboard.press("Control+Alt+2");
 
   await expect(page.locator("#python")).toHaveCount(0);
@@ -100,13 +100,14 @@ test("접힘은 세션 한정 — 새로고침하면 기본값(시트·Python �
   expect(await collapseState(page)).toEqual({ grid: false, python: false });
 });
 
-test("그리드 최소 폭 15% — 핸들을 끝까지 밀면 40%보다 좁아진다", async ({ page }) => {
+test("그리드 최소 폭 15% — 핸들을 끝까지 밀면 기본 40%보다 좁아진다", async ({ page }) => {
   await page.goto("/");
   await waitForApp(page);
 
-  const mainWidth = await widthOf(page, "#main");
+  const mainWidth = await widthOf(page, '[data-testid="workspace"]');
   const before = await widthOf(page, "#grid");
-  expect(before).toBeGreaterThan(mainWidth * 0.6); // 기본 splitRatio 72%
+  expect(before / mainWidth).toBeGreaterThan(0.3); // 부록 P.6 기본 그리드 40%
+  expect(before / mainWidth).toBeLessThan(0.5);
 
   // 구분자 포커스 → Home = 왼쪽 끝까지 (최소 크기까지 축소)
   const handle = page.locator('#grid + [data-slot="resizable-handle"]');
@@ -115,7 +116,7 @@ test("그리드 최소 폭 15% — 핸들을 끝까지 밀면 40%보다 좁아�
 
   await expect
     .poll(async () => (await widthOf(page, "#grid")) / mainWidth)
-    .toBeLessThan(0.4); // 기존 minSize 40%로는 불가능했던 폭
+    .toBeLessThan(0.3); // 기본 40%에서 더 줄어든다
   const ratio = (await widthOf(page, "#grid")) / mainWidth;
   expect(ratio).toBeGreaterThan(0.1); // minSize 15%에서 멈춘다
 });

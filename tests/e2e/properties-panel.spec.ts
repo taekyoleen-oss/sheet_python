@@ -64,13 +64,20 @@ test("속성 창: 작업 폴더 지정 → 파일 불러오기 → 변수 → �
   const row = panel.getByTestId("props-variables").locator('[data-var="claims"]');
   await expect(row).toBeVisible({ timeout: 90_000 });
   await expect(row).toContainText("3×2");
+  // 실행으로 만든 변수만 — 초기화 스크립트의 pd·np는 보이지 않는다
+  await expect(panel.getByTestId("props-variables").locator('[data-var="pd"]')).toHaveCount(0);
 
   // 변수 → 스프레드시트 (연결 출력, 선택 셀 H1)
   await page.evaluate(() =>
     (window as any).__pygridStore.getState().setSelection({ r0: 0, c0: 7, r1: 0, c1: 7 }),
   );
-  await row.dblclick();
-  await page.getByRole("button", { name: "시트에 보이기" }).click();
+  // 클릭 → 세부 내용 팝업(상위 행·열 형) → 스프레드시트에 보이기 → 연결 출력 확정
+  await row.click();
+  const detail = page.getByTestId("variable-detail");
+  await expect(detail.getByText("int64").first()).toBeVisible({ timeout: 30_000 });
+  await expect(detail.getByRole("cell", { name: "250" })).toBeVisible();
+  await detail.getByRole("button", { name: "스프레드시트에 보이기" }).click();
+  await page.getByRole("button", { name: "시트에 보이기", exact: true }).click();
   await expect
     .poll(
       async () => {

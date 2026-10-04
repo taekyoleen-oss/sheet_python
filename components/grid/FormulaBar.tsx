@@ -54,6 +54,10 @@ function goTo(sheetName: string | undefined, range: CellRange): boolean {
     r1: Math.min(range.r1, sheet.rowCount - 1),
     c1: Math.min(range.c1, sheet.colCount - 1),
   });
+  // 그리드가 그 셀로 스크롤한다 (시트 전환 뒤 그려진 다음 프레임에)
+  requestAnimationFrame(() =>
+    window.dispatchEvent(new CustomEvent("pygrid:goto", { detail: { r: range.r0, c: range.c0 } })),
+  );
   return true;
 }
 
