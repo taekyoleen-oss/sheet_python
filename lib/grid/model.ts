@@ -37,6 +37,7 @@ import {
   newId,
   normalizeBlock,
   normalizeWorkbook,
+  onSheet,
   outputsOf,
   srcBlockId,
   srcTag,
@@ -154,7 +155,7 @@ function shiftPoint(p: { r: number; c: number }, ed: StructureEdit): { r: number
 /**
  * 부록 O.2·O.4: 행/열 삽입·삭제 시 (셀 이동 전에 호출)
  * - 모든 시트 수식 참조·정의된 이름을 엑셀처럼 조정
- * - Python 블록·출력 앵커를 함께 이동, 코드 안 `xl("…")` 참조도 같은 규칙으로 재작성
+ * - Python 블록·출력 앵커를 함께 이동, 코드 안 `sheet("…")` 참조도 같은 규칙으로 재작성
  * 반환: 바뀐 블록 id (dirty 표시됨 — 호출부가 재실행 통지)
  */
 function applyStructure(state: WorkbookState, ed: StructureEdit): string[] {
@@ -275,13 +276,16 @@ export interface WorkbookState {
   selection: CellRange | null;
   /** 실행 중 블록 표시(#BUSY! 렌더) — workbook 밖이라 undo 이력에 안 남는다 */
   runningBlocks: Record<string, true>;
+  /** 노트북식 실행 순번 — 블록이 마지막으로 실행된 번호(세션·런타임 단위, undo 이력 밖). 없으면 미실행 */
+  execCounts: Record<string, number>;
+  execSeq: number;
   /** 실행 성공 400ms 플래시 범위 (렌더 전용) */
   flash: { sheetId: string; range: CellRange } | null;
   /** Python 패널에서 포커스할 블록 (블록 추가 직후) */
   focusBlockId: string | null;
   /** 재실행 필요 블록(수동 모드 배지) — workbook 밖 transient */
   dirtyBlocks: Record<string, true>;
-  /** 편집기 xl() 커서 → 그리드 점선 하이라이트 (§4.8) */
+  /** 편집기 sheet() 커서 → 그리드 점선 하이라이트 (§4.8) */
   hoverRange: { sheetId: string; range: CellRange } | null;
   /** 그리드 spill hover → 블록 카드 강조 (§4.8 역방향) */
   hoverBlockId: string | null;
@@ -314,7 +318,7 @@ export interface WorkbookState {
   pyCollapsed: boolean;
   /** 상단 뷰 전환 — 워크북 | 데이터 예제/분석 (부록 E, 설정에 저장, undo 대상 아님) */
   view: "workbook" | "reference";
-  /** 부록 J.3: 블록별 마지막 성공 실행이 읽은 xl() 참조 범위 (transient — 이력·저장 무관) */
+  /** 부록 J.3: 블록별 마지막 성공 실행이 읽은 sheet() 참조 범위 (transient — 이력·저장 무관) */
   executedRefs: Record<string, SheetRange[]>;
   /** 부록 J.3: 실행 참조 표시 토글 (기본 켬, 설정에 저장, undo 대상 아님) */
   showRefs: boolean;
@@ -325,7 +329,7 @@ export interface WorkbookState {
   /** 일괄 편집 = 한 트랜잭션 = 한 undo 단계 */
   setCells: (sheetId: string, edits: CellEdit[]) => void;
   clearRange: (sheetId: string, range: CellRange) => void;
-  /** 행/열 삽입·삭제 — 수식·이름·블록 앵커·xl() 참조 조정까지 한 트랜잭션. 반환: 바뀐 블록 id */
+  /** 행/열 삽입·삭제 — 수식·이름·블록 앵커·sheet() 참조 조정까지 한 트랜잭션. 반환: 바뀐 블록 id */
   insertRows: (sheetId: string, index: number, count: number) => string[];
   insertCols: (sheetId: string, index: number, count: number) => string[];
   deleteRows: (sheetId: string, index: number, count: number) => string[];
@@ -415,7 +419,7 @@ export interface WorkbookState {
   setBlockNote: (id: string, note: string | null) => void;
   setBlockTitle: (id: string, title: string) => void;
   setBlockCollapsed: (id: string, collapsed: boolean) => void;
-  /** 시트로 보내기 켜기/끄기 — 끄면 그 블록의 spill 셀을 같은 트랜잭션에서 지운다 */
+  /** 시트에 추가 켜기/끄기 — 끄면 그 블록의 spill 셀을 같은 트랜잭션에서 지운다 */
   setBlockToSheet: (id: string, on: boolean) => void;
   /** 패널 헤더 '모두 접기/펼치기' */
   setAllCollapsed: (collapsed: boolean) => void;
@@ -429,6 +433,10 @@ export interface WorkbookState {
     opts?: { last?: RunResult; clearPrevious?: boolean },
   ) => void;
   setBlockRunning: (id: string, running: boolean) => void;
+  /** 실행 완료 → 다음 순번 부여 */
+  markExecuted: (id: string) => void;
+  /** 런타임 재설정(변수 초기화) → 순번도 초기화 */
+  resetExecCounts: () => void;
   setFlash: (flash: { sheetId: string; range: CellRange } | null) => void;
   setFocusBlock: (id: string | null) => void;
   markDirty: (ids: string[]) => void;
@@ -565,6 +573,8 @@ export const createWorkbookStore = () => {
           activeSheetId: wb.sheets[0].id,
           selection: null,
           runningBlocks: {},
+          execCounts: {},
+          execSeq: 0,
           flash: null,
           focusBlockId: null,
           dirtyBlocks: {},
@@ -811,7 +821,7 @@ export const createWorkbookStore = () => {
                 const ren = (fx: string) => renameSheetInFormula(fx, from, trimmed);
                 rewriteAllFormulas(wb, ren);
                 for (const n of wb.names ?? []) n.ref = ren(`=${n.ref}`).slice(1);
-                // 코드의 xl("Sheet2!A1")도 새 이름을 따라간다 (부록 O.4)
+                // 코드의 sheet("Sheet2!A1")도 새 이름을 따라간다 (부록 O.4)
                 for (const b of wb.pyBlocks) {
                   if (b.kind === "markdown") continue;
                   const code = rewriteXlRefs(b.code, (ref) => ren(`=${ref}`).slice(1));
@@ -889,6 +899,8 @@ export const createWorkbookStore = () => {
               state.activeSheetId = fresh.sheets[0].id;
               state.selection = null;
               state.runningBlocks = {};
+              state.execCounts = {};
+              state.execSeq = 0;
               state.dirtyBlocks = {};
               state.executedRefs = {};
               state.chatRefs = [];
@@ -909,6 +921,8 @@ export const createWorkbookStore = () => {
               state.selection = null;
               // 이전 워크북의 transient 상태(실행 중·dirty 등) 정리 (§M7.5)
               state.runningBlocks = {};
+              state.execCounts = {};
+              state.execSeq = 0;
               state.dirtyBlocks = {};
               state.executedRefs = {};
               state.chatRefs = [];
@@ -945,10 +959,6 @@ export const createWorkbookStore = () => {
                 code: "",
                 outputMode: "values",
                 includeIndex: "auto",
-                // 새 블록은 Python 결과로만 본다 — 카드의 '시트로 보내기'로 켠다.
-                // __pygridToSheetDefault: spill을 검증하는 e2e 전용 스위치 (__pygridStore와 같은 테스트 훅)
-                toSheet:
-                  (globalThis as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault === true,
                 // 마크다운 블록은 실행되지 않고 셀에 아무것도 쓰지 않는다 (앵커 = 위치·목차 대상)
                 ...(kind === "markdown" ? { kind, markdown: "" } : {}),
               };
@@ -1102,6 +1112,17 @@ export const createWorkbookStore = () => {
             if (!block || block.kind === "markdown") return null;
             const sheet = st.workbook.sheets.find((s) => s.id === block.sheetId);
             if (!sheet) return null;
+            // '시트에 추가' — 처음 누르면 기존 출력(앵커)을 켜고, 이후로는 하나씩 추가한다
+            if (block.toSheet !== true) {
+              set((state) => {
+                const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
+                if (!b) return;
+                b.toSheet = true;
+                if (b.outputs?.[0]) delete b.outputs[0].off;
+                state.dirtyBlocks[blockId] = true;
+              });
+              return block.outputs?.[0]?.id ?? null;
+            }
             const r = block.anchor.r;
             const c = freeOutputCol(sheet, st.workbook.pyBlocks, block);
             const id = newId();
@@ -1132,6 +1153,9 @@ export const createWorkbookStore = () => {
             set((state) => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
               if (!b) return;
+              // 속성 창·모델 결과 → 시트: 보내는 것 자체가 시트에 추가. 처음이면 기존 출력(블록 앵커)은 끈다
+              if (b.toSheet !== true) for (const o of b.outputs ?? []) o.off = true;
+              b.toSheet = true;
               for (const spec of specs) {
                 const id = newId();
                 ids.push(id);
@@ -1154,11 +1178,18 @@ export const createWorkbookStore = () => {
           removeOutput: (blockId, outputId) =>
             set((state) => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
-              if (!b?.outputs || b.outputs.length <= 1) return; // 마지막 출력은 남긴다
+              if (!b?.outputs) return;
               const i = b.outputs.findIndex((o) => o.id === outputId);
               if (i < 0) return;
               const cleared = clearSpillCells(state.workbook, blockId, outputId);
-              b.outputs.splice(i, 1);
+              if (b.outputs.length <= 1) {
+                if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
+              } else b.outputs.splice(i, 1);
+              // 시트에 남은 출력이 없으면 블록이 시트에서 빠진다 — Python 결과로만 보기
+              if (b.outputs.every((o) => o.off) || b.outputs.length === 1 && b.outputs[0].id === outputId) {
+                b.toSheet = false;
+                for (const o of b.outputs) delete o.off;
+              }
               syncLegacy(b);
               if (cleared.length > 0) recalcFormulas(state.workbook, cleared);
               state.dirtyBlocks[blockId] = true;
@@ -1264,10 +1295,10 @@ export const createWorkbookStore = () => {
               const block = state.workbook.pyBlocks.find((b) => b.id === blockId);
               if (!block) return;
               const edited: SheetRange[] = []; // spill 반영도 수식 재계산 대상 (부록 I.2)
-              // 시트로 보내기 꺼짐 — 셀은 쓰지 않고 결과(last)만 남긴다
-              const toSheet = block.toSheet !== false;
+              // 시트에 추가 안 됨 — 셀은 쓰지 않고 결과(last)만 남긴다
               for (const raw of results) {
-                const res: OutputApply = toSheet
+                const target = block.outputs?.find((o) => o.id === raw.outputId);
+                const res: OutputApply = target && onSheet(block, target)
                   ? raw
                   : {
                       outputId: raw.outputId,
@@ -1332,6 +1363,18 @@ export const createWorkbookStore = () => {
               { outputId, cells, clearPrevious: opts?.clearPrevious, last: opts?.last },
             ]);
           },
+
+          markExecuted: (id) =>
+            set((state) => {
+              state.execSeq += 1;
+              state.execCounts[id] = state.execSeq;
+            }),
+
+          resetExecCounts: () =>
+            set((state) => {
+              state.execCounts = {};
+              state.execSeq = 0;
+            }),
 
           setBlockRunning: (id, running) =>
             set((state) => {

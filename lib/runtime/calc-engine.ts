@@ -175,7 +175,7 @@ function cycleMembers(blocks: CalcBlock[], graph: CalcGraph): Set<string> {
 
 /** Kahn 위상 정렬. 동순위는 (시트 순, 앵커 행, 열). 순환 구성원은 order에서 제외된다.
  *  순환의 하위(순환에 의존하지만 순환은 아닌) 블록은 순환 의존을 무시하고 order에 포함된다
- *  — 실행 시 xl() 안전망 또는 이전 spill 값으로 진행된다(문서 참조) */
+ *  — 실행 시 sheet() 안전망 또는 이전 spill 값으로 진행된다(문서 참조) */
 export function calcOrder(
   all: CalcBlock[],
   sheetOrder: string[],
@@ -451,7 +451,7 @@ export class RunCoordinator {
       try {
         refs = await this.analyzeCached(block.code);
       } catch (e) {
-        // xl() 비리터럴 인수 등 → #PYTHON! + 한국어 메시지
+        // sheet() 비리터럴 인수 등 → #PYTHON! + 한국어 메시지
         this.host.onResult(id, failure("PyGridAnalyzeError", msg(e)), null, null);
         continue;
       }

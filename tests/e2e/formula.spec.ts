@@ -141,21 +141,21 @@ test("=SUM(A1:A5) 집계 + #DIV/0! 표시·hover 한국어 설명", async ({ pag
   await expect(page.getByText("0으로 나눌 수 없습니다")).toBeVisible({ timeout: 5_000 });
 });
 
-test("수식 값을 xl()로 읽는 블록이 수식 갱신 시 자동 재실행된다 (실런타임)", async ({
+test("수식 값을 sheet()로 읽는 블록이 수식 갱신 시 자동 재실행된다 (실런타임)", async ({
   page,
 }) => {
   test.setTimeout(300_000);
   await page.goto("/");
   await waitForApp(page);
 
-  // A1=2 · B1==A1*3(=6) · 블록 D1: xl("B1")+1
+  // A1=2 · B1==A1*3(=6) · 블록 D1: sheet("B1")+1
   await page.evaluate(() => {
     const st = (window as any).__pygridStore.getState();
     const sid = st.workbook.sheets[0].id;
     st.setCellValue(sid, 0, 0, { v: 2, t: "n" });
     st.setCellValue(sid, 0, 1, { v: null, t: "n", fx: "=A1*3" });
     const id = st.addPyBlock(sid, { r: 0, c: 3 });
-    st.setBlockCode(id, 'xl("B1") + 1');
+    st.setBlockCode(id, 'sheet("B1") + 1');
   });
   expect((await cellAt(page, "0:1"))?.v).toBe(6); // 수식 즉시 계산
 

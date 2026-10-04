@@ -91,6 +91,11 @@ export interface OutputBinding {
   selection?: OutputSelection;
   /** 카드 목록에 표시할 이름 (없으면 변수명 또는 "마지막 표현식") */
   label?: string;
+  /**
+   * 시트에 쓰지 않는 출력. 속성 창·모델 결과로 처음 시트에 추가할 때 기존 첫 출력(블록 앵커)을 끈다 —
+   * 사용자가 고른 것만 시트에 놓이고 블록 앵커는 선점하지 않는다.
+   */
+  off?: boolean;
   /** 이 출력의 마지막 실행 결과 */
   last?: RunResult;
 }
@@ -119,8 +124,8 @@ export interface PyBlock {
   /** 카드 접기 상태 (마크다운·코드·결과 전부 숨김) */
   collapsed?: boolean;
   /**
-   * 결과를 시트 셀에 쓸지. false면 카드 아래 Python 결과로만 본다(새 블록 기본).
-   * undefined는 이 필드 이전 워크북 — 시트로 보낸다(기존 동작 유지).
+   * 결과를 시트 셀에 쓸지. true일 때만 쓴다 — 기본(없음)은 카드 아래 Python 결과로만 본다.
+   * 카드의 '시트에 추가'로 켜고, 마지막 출력을 지우면 꺼진다.
    */
   toSheet?: boolean;
   /** 출력 선택 (변수·열·행) — 레거시 단일 출력. 로드 시 outputs[0]로 정규화된다 */

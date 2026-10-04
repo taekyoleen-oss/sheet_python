@@ -1,11 +1,11 @@
-// 현재 그리드 선택 → xl() 참조 문자열 (참조 삽입 바·스니펫 {{range}} 공용, §2.3.2)
+// 현재 그리드 선택 → sheet() 참조 문자열 (참조 삽입 바·스니펫 {{range}} 공용, §2.3.2)
 
 import { cellKey } from "@/types/workbook";
 import { formatA1 } from "./a1";
 import { useWorkbookStore } from "./model";
 
 /**
- * 선택 범위를 xl() 호출 문자열로. targetSheetId(블록의 시트)와 다르면 시트 접두어.
+ * 선택 범위를 sheet() 호출 문자열로. targetSheetId(블록의 시트)와 다르면 시트 접두어.
  * headers 휴리스틱: 첫 행이 전부 문자열(비어 있지 않음) + 아래 행에 숫자 존재 → headers=True.
  */
 export function xlRefForSelection(targetSheetId?: string): string | null {
@@ -40,5 +40,5 @@ export function xlRefForSelection(targetSheetId?: string): string | null {
 
   const crossSheet = targetSheetId !== undefined && targetSheetId !== sheet.id;
   const ref = formatA1(sel, crossSheet ? sheet.name : undefined);
-  return `xl("${ref}"${headers ? ", headers=True" : ""})`;
+  return `sheet("${ref}"${headers ? ", headers=True" : ""})`;
 }

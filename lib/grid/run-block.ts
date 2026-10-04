@@ -44,7 +44,11 @@ function addAtSelection(kind: BlockKind): void {
   const anchor = st.selection
     ? { r: st.selection.r0, c: st.selection.c0 }
     : { r: 0, c: 0 };
-  const id = st.addPyBlock(st.activeSheetId, anchor, kind);
+  // 앵커는 계산 순서용 위치일 뿐(시트에 추가 전엔 셀을 선점하지 않음) — 이미 다른 블록 자리면 아래 빈 행으로
+  let id: string | null = null;
+  for (let r = anchor.r; id === null && r < anchor.r + 500; r++) {
+    id = st.addPyBlock(st.activeSheetId, { r, c: anchor.c }, kind);
+  }
   if (id === null) {
     toast.error("이 셀에는 블록을 만들 수 없습니다 (이미 블록 앵커이거나 spill 셀입니다)");
     return;

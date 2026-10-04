@@ -1,6 +1,6 @@
 "use client";
 
-// 초보자용 코드 스니펫 드롭다운 — {{range}}는 현재 그리드 선택의 xl() 참조로 치환
+// 초보자용 코드 스니펫 드롭다운 — {{range}}는 현재 그리드 선택의 sheet() 참조로 치환
 
 import { CaretDown } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ export default function SnippetMenu() {
       return;
     }
     const block = st.workbook.pyBlocks.find((b) => b.id === blockId);
-    const ref = xlRefForSelection(block?.sheetId) ?? 'xl("A1")';
+    const ref = xlRefForSelection(block?.sheetId) ?? 'sheet("A1")';
     target.insert(code.replace(/\{\{range\}\}/g, ref));
   };
 

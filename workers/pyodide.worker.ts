@@ -168,7 +168,7 @@ async function boot(msg: Extract<MainToWorker, { t: "boot" }>): Promise<void> {
       post({ t: "stderr", id: 0, chunk: "한글 폰트 등록 실패 — 차트 한글이 깨질 수 있습니다" });
     }
 
-    // _pygrid_* 헬퍼 + xl() 브리지 + §3.3 변환 정의 (리셋에서도 살아남는다)
+    // _pygrid_* 헬퍼 + sheet() 브리지 + §3.3 변환 정의 (리셋에서도 살아남는다)
     py.runPython(bootstrapPy);
     py.runPython(xlPy);
     py.runPython(convertPy);
@@ -312,7 +312,7 @@ async function handleRun(msg: Extract<MainToWorker, { t: "run" }>): Promise<void
   runIo.err = "";
   try {
     await loadImports(py, msg.code);
-    // xl() 스냅샷 주입 → 실행+변환 → finally에서 캐시 비움 (계약: runtime-protocol.md)
+    // sheet() 스냅샷 주입 → 실행+변환 → finally에서 캐시 비움 (계약: runtime-protocol.md)
     py.globals.set("_pygrid_snapshots", JSON.stringify(msg.snapshots));
     py.runPython("_pygrid_xl_load(_pygrid_snapshots)");
     py.globals.set("_pygrid_code", msg.code);

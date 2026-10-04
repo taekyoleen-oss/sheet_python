@@ -1,5 +1,5 @@
 // 부록 H.3: 모델적합 가이드 — 블록 시퀀스 구성(모형별 단계 수·마크다운/코드 교차·제목),
-// xl() 참조·헤더 일치, 분포 선택의 ③ 반영, 한 undo 단계(runFitGuide 선택 모드).
+// sheet() 참조·헤더 일치, 분포 선택의 ③ 반영, 한 undo 단계(runFitGuide 선택 모드).
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildFitGuideBlocks, runFitGuide } from "@/lib/grid/fit-guide";
 import { useWorkbookStore } from "@/lib/grid/model";
@@ -69,14 +69,14 @@ describe("buildFitGuideBlocks (순수 코어)", () => {
     expect(blocks[blocks.length - 1].outputMode).toBe("object");
   });
 
-  it("xl() 참조가 지정 범위·헤더와 일치한다 (값 열 = 마지막 헤더)", () => {
+  it("sheet() 참조가 지정 범위·헤더와 일치한다 (값 열 = 마지막 헤더)", () => {
     const blocks = buildFitGuideBlocks({
       model: "severity",
       dists: ["lognormal"],
       sev: { ref: "'내 시트'!B2:C42", headers: ["연도", "손해액"] },
     });
     for (const b of blocks.filter((x) => x.kind === "code")) {
-      expect(b.body).toContain(`xl("'내 시트'!B2:C42", headers=True)`);
+      expect(b.body).toContain(`sheet("'내 시트'!B2:C42", headers=True)`);
       expect(b.body).toContain(`df["손해액"]`);
     }
   });
@@ -118,7 +118,7 @@ describe("runFitGuide (선택 범위 모드)", () => {
     // 시트 접두어가 붙은 실제 범위·헤더 반영
     const sheetName = st().workbook.sheets[0].name;
     const code = st().workbook.pyBlocks.find((b) => b.kind !== "markdown")!.code;
-    expect(code).toContain(`xl("${sheetName}!A1:A11", headers=True)`);
+    expect(code).toContain(`sheet("${sheetName}!A1:A11", headers=True)`);
     expect(code).toContain(`df["손해액"]`);
     // 한 undo = 블록 9개가 한 번에 사라진다
     useWorkbookStore.temporal.getState().undo();

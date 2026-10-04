@@ -530,7 +530,7 @@ export default function FileMenu() {
               <legend className="mb-1 text-xs text-muted-foreground">로드 블록 생성</legend>
               {(
                 [
-                  ["xl", "xl() 참조 (권장)"],
+                  ["xl", "sheet() 참조 (권장)"],
                   ["pandas", "pandas 코드 (pd.read_*)"],
                   ["none", "만들지 않음"],
                 ] as const

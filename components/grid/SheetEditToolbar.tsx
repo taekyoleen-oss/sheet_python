@@ -223,7 +223,7 @@ export default function SheetEditToolbar() {
   const colSpan = selection ? selection.c1 - selection.c0 + 1 : 1;
   const sid = () => store().activeSheetId;
 
-  /** 부록 O.4: 행/열 구조 변경 뒤 — 앵커·xl() 참조가 바뀐 블록 + 이 시트를 읽는 블록 재실행 */
+  /** 부록 O.4: 행/열 구조 변경 뒤 — 앵커·sheet() 참조가 바뀐 블록 + 이 시트를 읽는 블록 재실행 */
   const structural = (changedBlocks: string[]) => {
     const sheet = store().workbook.sheets.find((s) => s.id === sid());
     if (!sheet) return;

@@ -1,6 +1,6 @@
 # xl() 브리지 — 설계서 §2.4(참조 추출)·§3.3(입력 변환).
 # 워커가 부트/리셋 시 bootstrap.py 다음에 로드한다.
-# 공개 이름은 `xl` 하나. 나머지는 _pygrid_ 접두사(리셋에서 살아남는다).
+# 공개 이름은 `sheet`(정식)와 `xl`(Python in Excel 호환 별칭). 나머지는 _pygrid_ 접두사(리셋에서 살아남는다).
 
 # ref 문자열 → RangeSnapshot dict {"values": 2D, "types": 2D, "scalar": bool}
 # 워커가 run 직전에 _pygrid_xl_load로 주입하고 finally에서 clear한다.
@@ -31,13 +31,13 @@ def _pygrid_extract_refs(code):
 
     refs = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "xl"):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("sheet", "xl")):
             continue
         if not node.args or not (
             isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
         ):
             return json.dumps(
-                {"ok": False, "message": "xl() 인수는 문자열 리터럴이어야 합니다"},
+                {"ok": False, "message": f"{node.func.id}() 인수는 문자열 리터럴이어야 합니다"},
                 ensure_ascii=False,
             )
         for kw in node.keywords:
@@ -45,7 +45,7 @@ def _pygrid_extract_refs(code):
                 isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, bool)
             ):
                 return json.dumps(
-                    {"ok": False, "message": "xl() headers 인수는 True/False 리터럴이어야 합니다"},
+                    {"ok": False, "message": f"{node.func.id}() headers 인수는 True/False 리터럴이어야 합니다"},
                     ensure_ascii=False,
                 )
         refs.append(node.args[0].value)
@@ -96,7 +96,7 @@ def _pygrid_xl(ref, headers=False):
     snap = _pygrid_xl_cache.get(ref)
     if snap is None:
         raise RuntimeError(
-            f"xl(): 참조 {ref!r}의 데이터가 준비되지 않았습니다 (계산 엔진이 스냅샷을 주입하지 않음)"
+            f"sheet(): 참조 {ref!r}의 데이터가 준비되지 않았습니다 (계산 엔진이 스냅샷을 주입하지 않음)"
         )
     values, types = snap["values"], snap["types"]
     if snap.get("scalar"):
@@ -120,4 +120,5 @@ def _pygrid_xl(ref, headers=False):
     return df
 
 
-xl = _pygrid_xl
+sheet = _pygrid_xl
+xl = _pygrid_xl  # Python in Excel 호환 별칭

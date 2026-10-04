@@ -35,7 +35,7 @@ export interface SnippetFamily {
  * NUM+CAT을 화이트리스트로 쓰므로 목록에 없는 열(ID·날짜·파생 등)은 자동으로 빠진다.
  * 조각 안에서 쓰는 다른 상수(비교할 범주 BY, 구간화할 열 COL)는 CAT·NUM에서 끌어 쓴다.
  */
-export const STAT_HEAD = `df = {{range}}                               # 그리드에서 표를 선택해 넣으면 xl(...) 호출로 치환됩니다
+export const STAT_HEAD = `df = {{range}}                               # 그리드에서 표를 선택해 넣으면 sheet(...) 호출로 치환됩니다
 TARGET = "WAGE"                              # 예측할 연속형 열
 CAT = ["SOUTH", "SEX", "UNION", "RACE", "OCCUPATION", "SECTOR", "MARR"]   # 범주형(코드·문자)
 NUM = ["EDUCATION", "EXPERIENCE", "AGE"]     # 수치형 설명변수 (여기 없는 열은 모형에서 빠진다)`;
@@ -802,9 +802,9 @@ g.reset_index().round(4)`,
 // 통계분석과 달리 '표본에서 모형을 고르는' 절차가 아니라, 확정된 위험률에서
 // 기수 → 급부 현가 → 보험료로 내려가는 계리 절차다. 그래서 목록을 따로 둔다.
 // 각 조각은 표 없이도 돌도록 소형 위험률을 인라인으로 만들며, 실제 표가 있으면
-// 맨 윗줄을 xl("위험률!A1:C112", headers=True)로 바꾸면 된다.
+// 맨 윗줄을 sheet("위험률!A1:C112", headers=True)로 바꾸면 된다.
 
-/** 예제용 위험률 — 실제 경험표가 있으면 이 3줄을 xl() 한 줄로 바꾼다 */
+/** 예제용 위험률 — 실제 경험표가 있으면 이 3줄을 sheet() 한 줄로 바꾼다 */
 const RATE = `age = np.arange(0, 111)
 qx = np.clip(0.00035 + 0.000028 * 1.0955 ** age, 0, 1)   # Makeham 근사 사망률(예제용)
 # 실제 경험표를 쓰려면: qx = {{range}}["qx"].to_numpy(float)   (그리드 선택 범위로 치환)`;
@@ -820,7 +820,7 @@ const RISK_GROUPS: WrangleSnippetGroup[] = [
         desc: "원시통계의 발생자수를 추계인구(노출)로 나눠 군단연령별 조율을 만들고 신뢰도를 함께 봅니다.",
         code: `import pandas as pd, numpy as np
 
-# 군단연령별 원시통계 — 실제로는 xl("원시통계!A1:D20", headers=True)
+# 군단연령별 원시통계 — 실제로는 sheet("원시통계!A1:D20", headers=True)
 raw = pd.DataFrame({
     "군단": ["0-4", "5-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79"],
     "중심연령": [2, 7, 15, 25, 35, 45, 55, 65, 75],
@@ -1218,7 +1218,7 @@ fig`,
         desc: "누적 지급 삼각형에서 개발계수를 뽑아 삼각형을 채우고 미보고발생손해액(IBNR)을 냅니다.",
         code: `import pandas as pd, numpy as np
 
-# 누적 지급 삼각형 — 실제로는 xl("triangle!A1:I9", headers=True)
+# 누적 지급 삼각형 — 실제로는 sheet("triangle!A1:I9", headers=True)
 tri = np.array([
     [3580, 5240, 6010, 6390, 6570, 6660, 6700, 6720],
     [3810, 5580, 6400, 6810, 7000, 7100, 7150, np.nan],

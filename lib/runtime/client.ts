@@ -342,7 +342,7 @@ export class RuntimeClient {
     return { repr: res.repr, traceback: res.traceback };
   }
 
-  /** xl() 참조 추출. M3는 빈 배열(M4에서 xl.py ast 분석 추가) */
+  /** sheet() 참조 추출. M3는 빈 배열(M4에서 xl.py ast 분석 추가) */
   async analyze(code: string): Promise<string[]> {
     const id = this.nextId++;
     const res = await this.request({ t: "analyze", id, code });

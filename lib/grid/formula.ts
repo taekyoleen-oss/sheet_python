@@ -1075,8 +1075,8 @@ export function cellFromInput(text: string): Cell | null {
   return { v: text, t: "s" };
 }
 
-/** Python 코드의 `xl("…")`·`xl('…')` 문자열 리터럴 참조 (부록 O.4 — 행/열 삽입·시트 이름 변경 재작성) */
-const XL_CALL_RE = /\bxl\(\s*([rRuU]?)(["'])((?:(?!\2)[^\\n])*)\2/g;
+/** Python 코드의 `sheet("…")`·`xl('…')`(호환 별칭) 문자열 리터럴 참조 (부록 O.4 — 행/열 삽입·시트 이름 변경 재작성) */
+const XL_CALL_RE = /\b(?:sheet|xl)\(\s*([rRuU]?)(["'])((?:(?!\2)[^\\n])*)\2/g;
 
 /** 코드 속 xl() 참조 텍스트마다 map 적용. 같은 따옴표가 결과에 들어가면 원문 유지 */
 export function rewriteXlRefs(code: string, map: (ref: string) => string): string {

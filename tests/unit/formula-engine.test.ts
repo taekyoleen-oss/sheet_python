@@ -24,7 +24,7 @@ const at = (sid: string, r: number, c: number): SheetRange => ({
   c1: c,
 });
 
-/** 시트로 보내기를 켠 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
+/** 시트에 추가된 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
 const sheetBlock = (
   store: ReturnType<typeof createWorkbookStore>,
   sheetId: string,

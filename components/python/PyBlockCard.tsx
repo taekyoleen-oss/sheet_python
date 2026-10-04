@@ -58,7 +58,7 @@ import { codeTitle } from "@/lib/grid/code-sections";
 import { toast } from "sonner";
 import { applyMdAction, renderMarkdown, type MdAction } from "@/lib/grid/markdown";
 import { useWorkbookStore } from "@/lib/grid/model";
-import { outputsOf } from "@/lib/grid/outputs";
+import { onSheet, outputsOf } from "@/lib/grid/outputs";
 import { moveBlock, runBlock } from "@/lib/grid/run-block";
 import { getRuntimeClient } from "@/lib/runtime/client";
 import { cn } from "@/lib/utils";
@@ -257,12 +257,13 @@ function OutputRow({
   block,
   output,
   index,
-  canRemove,
+  last,
 }: {
   block: PyBlock;
   output: OutputBinding;
   index: number;
-  canRemove: boolean;
+  /** 마지막 출력 — 지우면 블록이 시트에서 빠진다(Python 결과로만 보기) */
+  last: boolean;
 }) {
   const sheetId = output.sheetId ?? block.sheetId;
   const sheetName = useWorkbookStore(
@@ -338,10 +339,9 @@ function OutputRow({
       <Button
         variant="ghost"
         size="icon-xs"
-        disabled={!canRemove}
         onClick={() => store().removeOutput(block.id, output.id)}
         aria-label={`출력 ${index + 1} 삭제`}
-        title={canRemove ? "이 출력 삭제" : "출력은 최소 하나 필요합니다"}
+        title={last ? "시트에서 빼기 — Python 결과로만 봅니다" : "이 출력 삭제"}
       >
         <X />
       </Button>
@@ -356,7 +356,7 @@ function OutputRow({
 
 /** 출력 목록 — 한 블록의 결과를 여러 셀에 나눠 놓는다 (부록 D.1) */
 function OutputList({ block }: { block: PyBlock }) {
-  const outputs = outputsOf(block);
+  const outputs = outputsOf(block).filter((o) => onSheet(block, o)); // 꺼진 출력(블록 앵커)은 숨긴다
   const [modelOpen, setModelOpen] = useState(false);
   return (
     // 카드 내부 밴드 구분: 출력 설정은 옅은 muted 배경 + 상하 경계 (설명·코드와 시각 분리)
@@ -367,21 +367,10 @@ function OutputList({ block }: { block: PyBlock }) {
           block={block}
           output={o}
           index={i}
-          canRemove={outputs.length > 1}
+          last={outputs.length === 1}
         />
       ))}
       <div className="border-b bg-muted/20 px-2 py-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs text-primary"
-          onClick={() => {
-            const id = store().addOutput(block.id);
-            if (id) notifyWorkbookEdit([], [block.id]);
-          }}
-        >
-          <Plus className="size-3" /> 출력 추가
-        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -454,15 +443,19 @@ function CellResult({ block }: { block: PyBlock }) {
 }
 
 /** 해당 셀(앵커)로 이동 (헤더 주소 버튼 · ⋮ 메뉴 공용) */
+/** 시트에 놓인 첫 출력 위치 (없으면 블록 앵커) */
+function sheetPos(block: PyBlock): { sheetId: string; r: number; c: number } {
+  const o = outputsOf(block).find((x) => onSheet(block, x));
+  return o
+    ? { sheetId: o.sheetId ?? block.sheetId, r: o.anchor.r, c: o.anchor.c }
+    : { sheetId: block.sheetId, r: block.anchor.r, c: block.anchor.c };
+}
+
 function goToAnchor(block: PyBlock): void {
   const st = store();
-  st.setActiveSheet(block.sheetId);
-  st.setSelection({
-    r0: block.anchor.r,
-    c0: block.anchor.c,
-    r1: block.anchor.r,
-    c1: block.anchor.c,
-  });
+  const p = sheetPos(block);
+  st.setActiveSheet(p.sheetId);
+  st.setSelection({ r0: p.r, c0: p.c, r1: p.r, c1: p.c });
 }
 
 /** ⋮ 더보기 — 헤더에서 밀어낸 보조 조작 */
@@ -540,7 +533,7 @@ function MoreMenu({
             <DropdownMenuShortcut>제목에서 Ctrl+Enter</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
-        {block.toSheet !== false && (
+        {block.toSheet === true && (
           <DropdownMenuItem onClick={() => goToAnchor(block)}>해당 셀로 이동</DropdownMenuItem>
         )}
         <DropdownMenuItem
@@ -610,14 +603,17 @@ export default function PyBlockCard({
   const isMarkdown = block.kind === "markdown";
   const running = useWorkbookStore((s) => !!s.runningBlocks[block.id]);
   const dirty = useWorkbookStore((s) => !!s.dirtyBlocks[block.id]);
+  const execCount = useWorkbookStore((s) => s.execCounts[block.id]);
   const hovered = useWorkbookStore((s) => s.hoverBlockId === block.id);
   const picking = useWorkbookStore((s) => s.anchorPicking?.blockId === block.id);
   const focusRequested = useWorkbookStore((s) => s.focusBlockId === block.id);
+  // 헤더 주소 = 시트에 놓인 첫 출력 위치 (시트에 추가 전에는 블록 앵커 — 표시되지 않는다)
+  const pos = sheetPos(block);
   const sheetName = useWorkbookStore(
-    (s) => s.workbook.sheets.find((sh) => sh.id === block.sheetId)?.name ?? "?",
+    (s) => s.workbook.sheets.find((sh) => sh.id === pos.sheetId)?.name ?? "?",
   );
   const collapsed = !!block.collapsed;
-  const toSheet = !isMarkdown && block.toSheet !== false;
+  const toSheet = !isMarkdown && block.toSheet === true;
   const cardRef = useRef<HTMLDivElement>(null);
   const mdRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -678,12 +674,7 @@ export default function PyBlockCard({
     void runBlock(block.id);
   };
 
-  const anchorLabel = `${sheetName}!${formatA1({
-    r0: block.anchor.r,
-    c0: block.anchor.c,
-    r1: block.anchor.r,
-    c1: block.anchor.c,
-  })}`;
+  const anchorLabel = `${sheetName}!${formatA1({ r0: pos.r, c0: pos.c, r1: pos.r, c1: pos.c })}`;
 
   const rendered = useMemo(
     () => (isMarkdown ? renderMarkdown(block.markdown ?? "") : null),
@@ -850,23 +841,18 @@ export default function PyBlockCard({
             {statusBadge(block, running)}
             <button
               onClick={() => {
-                store().setBlockToSheet(block.id, !toSheet);
-                if (!toSheet) notifyWorkbookEdit([], [block.id]); // 켜면 재실행(수동은 dirty)해 셀에 쓴다
+                // 처음엔 결과 하나를 시트에 놓고, 다시 누를 때마다 출력이 하나씩 늘어난다
+                if (store().addOutput(block.id)) notifyWorkbookEdit([], [block.id]);
               }}
-              aria-pressed={toSheet}
               title={
                 toSheet
-                  ? "시트로 보내는 중 — 누르면 Python 결과로만 봅니다(시트의 결과 셀은 지워짐)"
-                  : "결과를 시트 셀로 보냅니다 — 보낼 위치·대상을 아래에서 고릅니다"
+                  ? "출력을 하나 더 시트에 추가합니다 — 위치·변수·열·행은 아래에서 고릅니다"
+                  : "결과를 시트에 추가합니다 — 기본은 Python 결과로만 봅니다"
               }
-              className={cn(
-                "shrink-0 rounded border px-1.5 py-0.5 text-[11px]",
-                toSheet
-                  ? "border-primary/50 bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
+              className="flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              시트로 보내기
+              <Plus className="size-3" />
+              시트에 추가
             </button>
             {dirty && !running && (
               <span
@@ -940,7 +926,7 @@ export default function PyBlockCard({
       {/* 본문 — 왼쪽 원형 실행 레일 + 내용 */}
       {!collapsed && (
         <div className="flex">
-          <div className="flex w-9 shrink-0 justify-center py-1.5">
+          <div className="flex w-9 shrink-0 flex-col items-center gap-0.5 py-1.5">
             {isMarkdown ? (
               <Button
                 variant="ghost"
@@ -962,6 +948,16 @@ export default function PyBlockCard({
               >
                 <Play weight="fill" className="text-primary" />
               </Button>
+            )}
+            {/* 노트북식 실행 순번 — 실행 중 [*], 미실행이면 비워 둔다 */}
+            {!isMarkdown && (running || execCount !== undefined) && (
+              <span
+                data-testid="exec-count"
+                className="font-mono text-[10px] leading-none text-muted-foreground"
+                title={running ? "실행 중" : `${execCount}번째로 실행됨`}
+              >
+                [{running ? "*" : execCount}]
+              </span>
             )}
           </div>
 
@@ -1124,7 +1120,7 @@ export default function PyBlockCard({
                     value={block.code}
                     onChange={onChange}
                     onRun={run}
-                    placeholder={'df = xl("A1:C10", headers=True)\ndf.describe()'}
+                    placeholder={'df = sheet("A1:C10", headers=True)\ndf.describe()'}
                   />
                 )}
                 <CellResult block={block} />

@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 블록 기본은 '시트에 추가 안 함' — 이 스펙은 샘플·블록 결과를 시트 셀에서 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 H: 모델적합 가이드 마법사(샘플 claims → 심도 → 로그정규+지수) 실런타임 검증 +
 // 보험 예제 워크북(청구 심도 적합) 로드 → 전체 실행 성공.
 // 부록 K 데이터 내장 워크북 5종(체인래더 확장판 포함)은 sample-workbooks.spec.ts가 다룬다.

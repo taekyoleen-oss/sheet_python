@@ -183,6 +183,7 @@ def _pygrid_reset():
         if name in keep or name.startswith("_pygrid"):
             continue
         del g[name]
-    # xl()은 공개 이름이라 위에서 지워지므로 복구한다 (xl.py가 _pygrid_xl로도 정의)
+    # sheet()·xl()은 공개 이름이라 위에서 지워지므로 복구한다 (xl.py가 _pygrid_xl로도 정의)
     if "_pygrid_xl" in g:
+        g["sheet"] = g["_pygrid_xl"]
         g["xl"] = g["_pygrid_xl"]

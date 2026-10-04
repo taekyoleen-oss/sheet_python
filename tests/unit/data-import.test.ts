@@ -86,7 +86,7 @@ describe("importData", () => {
     });
     const block = st().workbook.pyBlocks.find((b) => b.id === res.blockId)!;
     // 시트 "mini", 사용 범위 A1:B3 (헤더 1행 + 데이터 2행 × 2열)
-    expect(block.code).toContain('df = xl("mini!A1:B3", headers=True)');
+    expect(block.code).toContain('df = sheet("mini!A1:B3", headers=True)');
     // 블록 앵커는 추가된 데이터 시트(활성)의 빈 열
     expect(block.sheetId).toBe(st().activeSheetId);
   });
@@ -99,7 +99,7 @@ describe("importData", () => {
       makeBlock: "xl",
     });
     const block = st().workbook.pyBlocks.find((b) => b.id === res.blockId)!;
-    expect(block.code).toContain(`df = xl("'mini (2)'!A1:A2", headers=True)`);
+    expect(block.code).toContain(`df = sheet("'mini (2)'!A1:A2", headers=True)`);
   });
 
   it("makeBlock 'none' → 블록 없음, 'xl'인데 시트 미생성(toFs도 없음) → 블록 강등 없음", async () => {

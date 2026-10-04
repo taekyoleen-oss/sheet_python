@@ -1,6 +1,6 @@
 // 모델적합 워크북 가이드 (부록 H.3) — 마법사 선택(데이터·모형·후보 분포)으로
 // [마크다운 설명 + 코드] 단계 블록 시퀀스를 만든다. 코드는 데이터를 내장하지 않고
-// 항상 xl("범위", headers=True) 참조를 쓴다(데이터의 원본은 그리드).
+// 항상 sheet("범위", headers=True) 참조를 쓴다(데이터의 원본은 그리드).
 // 순수 코어: buildFitGuideBlocks / 불순 진입점: runFitGuide (한 스토어 트랜잭션 = 한 undo).
 // 분포 파라미터화는 lib/reference/fitPython.ts·distributions.ts pySpec와 일치
 // (로그정규 s/scale·floc=0, 지수 scale=1/lambda, 음이항 프로파일 우도 등). fitPython은 수정하지 않는다.
@@ -55,7 +55,7 @@ export const FIT_GUIDE_SAMPLES: {
 /* ─────────────────────────── 순수 코어 ─────────────────────────── */
 
 export interface FitGuideRange {
-  /** xl() 인수 문자열 — 시트 접두어 포함, 헤더 행 포함 (예: "청구액!A1:A301") */
+  /** sheet() 인수 문자열 — 시트 접두어 포함, 헤더 행 포함 (예: "청구액!A1:A301") */
   ref: string;
   /** 실제 헤더(1~2개) — 마지막이 값(손해액·건수) 열 */
   headers: string[];
@@ -112,13 +112,13 @@ fits.append(("음이항", stats.nbinom(_r, _r / (_r + _m)), 2, f"r={_r:.4g}, p={
 const sevStanzas = (ids: string[]) => ids.map((id) => SEV_FIT_STANZA[id]).filter(Boolean).join("\n");
 const freqStanzas = (ids: string[]) => ids.map((id) => FREQ_FIT_STANZA[id]).filter(Boolean).join("\n");
 
-/** xl() 로드 줄 — dfVar 이름은 합성에서 df_x/df_n으로 분리 */
+/** sheet() 로드 줄 — dfVar 이름은 합성에서 df_x/df_n으로 분리 */
 const loadSev = (r: FitGuideRange, dfVar = "df") =>
-  `${dfVar} = xl("${r.ref}", headers=True)
+  `${dfVar} = sheet("${r.ref}", headers=True)
 x = ${dfVar}["${r.headers[r.headers.length - 1]}"].dropna().astype(float).to_numpy()`;
 
 const loadFreq = (r: FitGuideRange, dfVar = "df") =>
-  `${dfVar} = xl("${r.ref}", headers=True)
+  `${dfVar} = sheet("${r.ref}", headers=True)
 counts = ${dfVar}["${r.headers[r.headers.length - 1]}"].dropna().astype(int).to_numpy()`;
 
 /** 심도 비교표 공통 꼬리 — DataFrame이 마지막 표현식(값 모드 spill) */
@@ -216,7 +216,7 @@ S = np.array([all_x[idx[i]:idx[i + 1]].sum() for i in range(n_years)])`;
 
 const md1 = (ref: string, col: string) => `## 1단계 — 데이터 확인
 
-xl() 참조로 그리드의 \`${ref}\` 범위를 불러옵니다 — 데이터의 원본은 항상 시트입니다.
+sheet() 참조로 그리드의 \`${ref}\` 범위를 불러옵니다 — 데이터의 원본은 항상 시트입니다.
 행·열 크기와 값 열("${col}")이 의도한 범위와 일치하는지, 결측이나 이상값이 섞여 있지 않은지 확인하세요.`;
 
 const MD2_SEV = `## 2단계 — 경험적 분석
@@ -250,7 +250,7 @@ VaR는 분위수("이 확률로는 이 이하"), TVaR는 그 분위수를 넘는
 /**
  * 순수 코어 — 마법사 선택을 [마크다운|코드] 블록 시퀀스로 변환한다.
  * 첫 블록은 제목 마크다운(# 모델적합 — …). 코드는 블록 단독 실행이 가능하도록
- * 각자 xl() 로드·적합을 포함한다(블록 간 변수 공유에 의존하지 않는다).
+ * 각자 sheet() 로드·적합을 포함한다(블록 간 변수 공유에 의존하지 않는다).
  */
 export function buildFitGuideBlocks(spec: FitGuideSpec): GuideBlock[] {
   const sevIds = spec.dists.filter((d) => SEV_FIT_STANZA[d]);
@@ -331,7 +331,7 @@ ${SEV_TABLE_TAIL}`,
     );
     md("1단계", `## 1단계 — 데이터 확인
 
-심도(개별 손해액) \`${sev.ref}\`와 빈도(건수) \`${freq.ref}\` 두 범위를 xl() 참조로 불러옵니다.
+심도(개별 손해액) \`${sev.ref}\`와 빈도(건수) \`${freq.ref}\` 두 범위를 sheet() 참조로 불러옵니다.
 두 범위의 크기·값 열("${col}", "${nCol}")이 맞는지, 결측이 섞여 있지 않은지 확인하세요.`);
     code(
       "데이터 확인",

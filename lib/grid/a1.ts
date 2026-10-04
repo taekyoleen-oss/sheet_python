@@ -1,4 +1,4 @@
-// A1 참조 파서·포매터 — 설계서 §1.7 (xl() 참조와 상태 바 표기가 공유)
+// A1 참조 파서·포매터 — 설계서 §1.7 (sheet() 참조와 상태 바 표기가 공유)
 
 import type { CellRange } from "@/types/workbook";
 

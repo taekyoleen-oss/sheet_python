@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createWorkbook, createWorkbookStore } from "@/lib/grid/model";
 import type { PyBlock, Workbook } from "@/types/workbook";
 
-/** 시트로 보내기를 켠 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
+/** 시트에 추가된 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
 const sheetBlock = (
   store: ReturnType<typeof createWorkbookStore>,
   sheetId: string,
@@ -333,6 +333,46 @@ describe("다중 출력 (부록 D.1)", () => {
     expect(cells(store)["0:0"]).toBeUndefined();
   });
 
+  it("'시트에 추가': 첫 클릭은 켜기, 이후 하나씩 추가, 마지막 출력 삭제는 시트에서 빼기", () => {
+    const { store, sheetId } = fresh();
+    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const b = () => store.getState().workbook.pyBlocks[0];
+    expect(b().toSheet).toBeUndefined();
+    const first = store.getState().addOutput(id);
+    expect(b().toSheet).toBe(true);
+    expect(b().outputs).toHaveLength(1);
+    expect(first).toBe(b().outputs![0].id);
+    const second = store.getState().addOutput(id)!;
+    expect(b().outputs).toHaveLength(2);
+    store.getState().removeOutput(id, second);
+    store.getState().removeOutput(id, first!);
+    expect(b().outputs).toHaveLength(1);
+    expect(b().toSheet).toBe(false);
+  });
+
+  it("속성 창·모델 결과로 처음 시트에 추가하면 블록 앵커(기존 첫 출력)는 끄고 고른 것만 쓴다", () => {
+    const { store, sheetId } = fresh();
+    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const [added] = store.getState().addOutputs(
+      id,
+      [{ selection: { variable: "df" }, label: "df", width: 2 }],
+      { sheetId, r: 0, c: 7 },
+    );
+    const b = () => store.getState().workbook.pyBlocks[0];
+    expect(b().toSheet).toBe(true);
+    expect(b().outputs![0].off).toBe(true);
+    store.getState().applyOutputResults(id, [
+      { outputId: b().outputs![0].id, cells: [[{ v: 1, t: "n" }]], clearPrevious: true },
+      { outputId: added, cells: [[{ v: 2, t: "n" }]], clearPrevious: true },
+    ]);
+    expect(cells(store)["0:0"]).toBeUndefined(); // 앵커는 선점하지 않는다
+    expect(cells(store)["0:7"]?.v).toBe(2);
+    store.getState().removeOutput(id, added); // 고른 출력을 지우면 시트에서 빠진다
+    expect(b().toSheet).toBe(false);
+    expect(b().outputs![0].off).toBeUndefined();
+    expect(cells(store)["0:7"]).toBeUndefined();
+  });
+
   it("addPyBlock은 outputs 1개로 시작하고 레거시 필드와 동기화된다", () => {
     const { block } = seed();
     const outputs = block().outputs!;
@@ -470,6 +510,7 @@ describe("다중 출력 (부록 D.1)", () => {
       sheetId,
       anchor: { r: 2, c: 1 },
       code: "1+1",
+      toSheet: true,
       outputMode: "values",
       includeIndex: "auto",
       output: { rowLimit: 5 },

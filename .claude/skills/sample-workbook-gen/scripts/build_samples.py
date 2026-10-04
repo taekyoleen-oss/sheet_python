@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """샘플 워크북(.pygrid.json)·스니펫(data/snippets.json) 생성기.
 
-스키마: types/workbook.ts (설계서 §3.1). 블록 코드의 xl() 참조는 실제 시트 범위와
+스키마: types/workbook.ts (설계서 §3.1). 블록 코드의 sheet() 참조는 실제 시트 범위와
 일치해야 하며, 로드 직후 전체 실행이 성공해야 한다.
 
 부록 K 계리 예제 5종은 public/samples/*.xlsx 원본을 시트로 내장한다 —
@@ -83,7 +83,7 @@ def build_loss_ratio():
         "includeIndex": "auto",
         "title": "상품별 손해율",
         "code": (
-            'df = xl("A1:D41", headers=True)\n'
+            'df = sheet("A1:D41", headers=True)\n'
             'g = df.groupby("상품").agg(\n'
             '    보험료=("보험료", "sum"), 손해액=("손해액", "sum"))\n'
             'g["손해율"] = (g["손해액"] / g["보험료"]).round(3)\n'
@@ -104,7 +104,7 @@ def build_loss_ratio():
 
 SEV_REF = '청구액!A1:A301'
 SEV_LOAD = (
-    'df = xl("청구액!A1:A301", headers=True)\n'
+    'df = sheet("청구액!A1:A301", headers=True)\n'
     'x = df["청구액"].dropna().astype(float).to_numpy()'
 )
 SEV_STANZAS = """fits = []
@@ -161,7 +161,7 @@ def build_claim_severity():
         md_block(
             "blk-cs-md1", sid, 2, 2,
             "## 1단계 — 데이터 확인\n\n"
-            "xl() 참조로 그리드의 `청구액!A1:A301` 범위를 불러옵니다 — 데이터의 원본은 항상 시트입니다.\n"
+            "sheet() 참조로 그리드의 `청구액!A1:A301` 범위를 불러옵니다 — 데이터의 원본은 항상 시트입니다.\n"
             '행·열 크기와 값 열("청구액")이 의도한 범위와 일치하는지, 결측이나 이상값이 섞여 있지 않은지 확인하세요.',
             "1단계 — 데이터 확인",
         ),
@@ -256,7 +256,7 @@ fig""",
 
 # ── 계리 예제 데이터 내장 워크북 (부록 K) ────────────────
 # public/samples/*.xlsx 원본을 시트로 내장하고, 단계별 [마크다운 + 코드] 쌍이
-# 그 데이터를 xl()로 읽어 모델을 산출한다(외부 파일 의존 없음).
+# 그 데이터를 sheet()로 읽어 모델을 산출한다(외부 파일 의존 없음).
 
 XLSX_DIR = ROOT / "public" / "samples"
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -365,7 +365,7 @@ def steps(sheet_id, col, prefix, intro, items):
 
 # ── K.1 위험률·생명표 (mortality_table.xlsx) ─────────────
 
-MORT_REF = 'df = xl("mortality_table!A1:C102", headers=True)'
+MORT_REF = 'df = sheet("mortality_table!A1:C102", headers=True)'
 
 MORT_FIT_FN = '''
 def fit_mortality(age, q):
@@ -391,7 +391,7 @@ MORT_STEPS = [
     (2,
      "1단계 — 데이터 확인·사망률 곡선",
      "## 1단계 — 데이터 확인·사망률 곡선\n\n"
-     "`mortality_table` 시트의 `age`(0~100세)·`qx_male`·`qx_female`을 `xl()`로 읽습니다 — 데이터의 원본은 항상 시트입니다.\n"
+     "`mortality_table` 시트의 `age`(0~100세)·`qx_male`·`qx_female`을 `sheet()`로 읽습니다 — 데이터의 원본은 항상 시트입니다.\n"
      "사망률은 연령에 따라 **지수적으로** 커지므로 세로축을 로그로 그립니다. 유아기(0~5세)의 높은 사망률과\n"
      "20대 초반의 완만한 혹(사고 사망)이 보이면 정상입니다.",
      "사망률 곡선 (로그 축)",
@@ -485,7 +485,7 @@ def build_mortality():
                     "성별 경험사망률 `qx`(0~100세, 101행)가 `mortality_table` 시트에 들어 있습니다.\n"
                     "이 데이터로 **생명표(lx·dx·ex)**를 만들고 **Gompertz·Makeham** 모형을 적합한 뒤\n"
                     "성별 사망률을 비교합니다. 데이터와 코드가 한 파일에 있으므로 열자마자 **전체 실행**만 하면 됩니다.\n\n"
-                    "> 각 코드 블록은 단독으로 실행할 수 있도록 `xl(\"mortality_table!A1:C102\")`로 데이터를 다시 읽습니다."),
+                    "> 각 코드 블록은 단독으로 실행할 수 있도록 `sheet(\"mortality_table!A1:C102\")`로 데이터를 다시 읽습니다."),
                    MORT_STEPS)
     return workbook(
         "wb-sample-mortality",
@@ -497,7 +497,7 @@ def build_mortality():
 
 # ── K.2 보험료 요인 분석 GLM (policy.xlsx) ───────────────
 
-GLM_FIT = '''df = xl("policy!A1:P601", headers=True)
+GLM_FIT = '''df = sheet("policy!A1:P601", headers=True)
 d = df.copy()
 d["income"] = d["income"].fillna(d["income"].median())     # 소득 결측 75건은 중앙값 대치
 NUM = ["age", "bmi", "dependents", "tenure_months"]
@@ -511,11 +511,11 @@ GLM_STEPS = [
     (2,
      "1단계 — 기술통계·교차표",
      "## 1단계 — 기술통계·교차표\n\n"
-     "`policy` 시트의 계약 600건(16열)을 `xl()`로 읽어 숫자 열의 분포와 결측을 먼저 확인합니다.\n"
+     "`policy` 시트의 계약 600건(16열)을 `sheet()`로 읽어 숫자 열의 분포와 결측을 먼저 확인합니다.\n"
      "그다음 **상품 × 채널** 평균 보험료 교차표를 만들어 요인이 실제로 보험료를 가르는지 눈으로 봅니다 —\n"
      "여기서 보이는 차이는 다른 요인(연령·지역)이 섞인 **조 평균**이라, 다음 단계의 GLM으로 분리해야 합니다.",
      "기술통계 · 상품×채널 평균 보험료",
-     '''df = xl("policy!A1:P601", headers=True)
+     '''df = sheet("policy!A1:P601", headers=True)
 print(df[["age", "premium", "bmi", "dependents", "income", "tenure_months"]].describe().round(1))
 print("결측 열:", {k: int(v) for k, v in df.isna().sum().items() if v})
 pv = df.pivot_table(index="product", columns="channel", values="premium", aggfunc="mean").round(0)
@@ -584,7 +584,7 @@ def build_premium_glm():
                     "`policy` 시트에 계약·고객 600건(연령·BMI·부양가족·상품·채널·지역·성별·보험료 등 16열)이 들어 있습니다.\n"
                     "기술통계와 교차표로 감을 잡은 뒤 **감마 GLM(로그 링크)**로 보험료 요인을 추정하고,\n"
                     "계수의 지수를 **상대도**로 읽습니다.\n\n"
-                    "> 모든 블록은 `xl(\"policy!A1:P601\")`로 시트를 다시 읽어 단독 실행됩니다."),
+                    "> 모든 블록은 `sheet(\"policy!A1:P601\")`로 시트를 다시 읽어 단독 실행됩니다."),
                    GLM_STEPS)
     return workbook(
         "wb-sample-premium-glm",
@@ -596,7 +596,7 @@ def build_premium_glm():
 
 # ── K.3 빈도·심도 모형 (claims.xlsx) ─────────────────────
 
-FS_LOAD = '''df = xl("claims!A1:K601", headers=True)
+FS_LOAD = '''df = sheet("claims!A1:K601", headers=True)
 x = df["claim_amt"].dropna().astype(float).to_numpy()       # 심도(손해액)
 counts = df["claim_cnt"].dropna().astype(int).to_numpy()    # 빈도(건수)
 '''
@@ -754,7 +754,7 @@ def build_freq_severity():
                     "`claims` 시트에 계약별 청구 실적 600건(손해액 `claim_amt`·건수 `claim_cnt`·현행 보험료 등 11열)이 있습니다.\n"
                     "**심도**(얼마나 크게)와 **빈도**(얼마나 자주)를 따로 적합한 뒤 곱해 순보험료를 구하고,\n"
                     "복합 포아송 시뮬레이션으로 포트폴리오 **VaR·TVaR**까지 갑니다.\n\n"
-                    "> 모든 블록은 `xl(\"claims!A1:K601\")`로 시트를 다시 읽어 단독 실행됩니다."),
+                    "> 모든 블록은 `sheet(\"claims!A1:K601\")`로 시트를 다시 읽어 단독 실행됩니다."),
                    FS_STEPS)
     return workbook(
         "wb-sample-freq-severity",
@@ -766,7 +766,7 @@ def build_freq_severity():
 
 # ── K.4 생존분석·유지율 (experience.xlsx) ────────────────
 
-SV_LOAD = '''df = xl("experience!A1:F801", headers=True)
+SV_LOAD = '''df = sheet("experience!A1:F801", headers=True)
 d = df.dropna(subset=["duration_years", "event"]).copy()
 d["event"] = d["event"].astype(int)     # 1=해지(사건), 0=중도절단(관측 종료까지 유지)
 '''
@@ -899,7 +899,7 @@ def build_survival():
                     "`experience` 시트의 계약 800건에는 경과기간과 해지 여부(중도절단 포함)가 들어 있습니다.\n"
                     "**Kaplan-Meier**로 유지율 곡선을 직접 구현하고(Pyodide에 `lifelines`가 없습니다),\n"
                     "구간별 연간 해지율을 뽑은 뒤 **로그순위 검정**으로 집단 간 차이를 확인합니다.\n\n"
-                    "> 모든 블록은 `xl(\"experience!A1:F801\")`로 시트를 다시 읽어 단독 실행됩니다."),
+                    "> 모든 블록은 `sheet(\"experience!A1:F801\")`로 시트를 다시 읽어 단독 실행됩니다."),
                    SV_STEPS)
     return workbook(
         "wb-sample-survival",
@@ -911,7 +911,7 @@ def build_survival():
 
 # ── K.5 지급준비금 체인래더 (triangle.xlsx) ──────────────
 
-CL_LOAD = '''df = xl("triangle!A1:I9", headers=True)
+CL_LOAD = '''df = sheet("triangle!A1:I9", headers=True)
 years = df["accident_year"].astype(int).to_numpy()
 tri = df.iloc[:, 1:].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
 n = tri.shape[0]
@@ -939,7 +939,7 @@ CL_STEPS = [
      "1단계 — 개발계수",
      "## 1단계 — 개발계수\n\n"
      "`triangle` 시트는 행=사고연도, 열=개발연차(`dev_1`~`dev_8`), 값=누적 지급보험금인 런오프 삼각형입니다.\n"
-     "하삼각(미래)은 빈 셀이라 `xl()`로 읽으면 `NaN`이 됩니다.\n\n"
+     "하삼각(미래)은 빈 셀이라 `sheet()`로 읽으면 `NaN`이 됩니다.\n\n"
      "볼륨가중 개발계수 `f_j = Σc(i,j+1)/Σc(i,j)` — 분자·분모 **두 칸이 모두 관측된 행만** 합산하는\n"
      "NaN 마스킹이 구현의 핵심입니다. 누적계수 CDF와 지급진행률(1/CDF)로 각 연차까지\n"
      "최종 지급의 몇 %가 진행됐는지 확인하세요.",
@@ -1058,7 +1058,7 @@ def build_chain_ladder():
                     "# 지급준비금 — 체인래더\n\n"
                     "`triangle` 시트의 런오프 삼각형(사고연도 8 × 개발연차 8, 누적 지급보험금)으로\n"
                     "개발계수를 뽑아 미지급 보험금(IBNR 포함)을 추정하고, **Mack 표준오차**로 추정의 불확실성까지 붙입니다.\n\n"
-                    "> 모든 블록은 `xl(\"triangle!A1:I9\")`로 시트를 다시 읽어 단독 실행됩니다."),
+                    "> 모든 블록은 `sheet(\"triangle!A1:I9\")`로 시트를 다시 읽어 단독 실행됩니다."),
                    CL_STEPS)
     return workbook(
         "wb-sample-chain-ladder",
@@ -1156,7 +1156,7 @@ def read_src_cells(path, names):
 
 # 모든 코드 블록이 단독 실행되도록 가정·위험률 로드와 함수 정의를 앞에 붙인다.
 PT_LOAD = '''# ── 가정 시트의 파라미터 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C20", headers=True)
+_p = sheet("가정!A1:C20", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex  = int(P["성별"])                       # 1 = 남자, 2 = 여자
 x0   = int(P["가입나이"])                    # 가입나이(세)
@@ -1174,7 +1174,7 @@ i_std = float(P["표준이율"])                 # 표준책임준비금 이율
 sc_yr = int(P["해지공제상각기간"])            # 신계약비 상각기간(년)
 
 # ── 위험률 시트(나이 0~112) — 성별에 맞는 열만 골라 나이 인덱스 Series로
-R  = xl("위험률!A1:K114", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:K114", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 sx = "남" if sex == 1 else "여"
 q_app, f_app = R["경험사망률_" + sx], R["발생률_" + sx]      # 적용 기초 — 7회 경험사망률 + 납입면제 발생률
 q_std, f_std = R["표준사망률_" + sx], R["표준발생률_" + sx]  # 표준 기초 — 7회 표준율
@@ -1528,7 +1528,7 @@ fig''',
                     "α1·α2·β1·β2·β′·γ (원본 `조회` 시트)\n"
                     "- 오른쪽 M열부터 6단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
                     "코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + f"{int(q['C5'])}세 남자 · {int(q['C6'])}세 만기 · {pay_yr}년납 월납 · "
                     f"가입금액 {int(q['C9']) // 10000}억원" + "**"),
@@ -1614,7 +1614,7 @@ def _collet(n):
 
 # 모든 코드 블록이 단독 실행되도록 가정·위험률 로드를 앞에 붙인다.
 CM_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C15", headers=True)
+_p = sheet("가정!A1:C15", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex   = int(P["성별"])          # 1 = 남자, 2 = 여자                (총괄!B2)
 x     = int(P["가입나이"])       # 가입연령                          (총괄!B3)
@@ -1630,10 +1630,10 @@ b1, b2 = float(P["β1"]), float(P["β2"])   # 0.1/1000, 유지비율 0.07
 gm     = float(P["γ"])                    # 수금비율 0.04
 
 # ── 급부배율 (원본 `총괄` 1행) — 담보별 배율과 90일 면책 적용 여부
-CV = xl("가정!E1:I9", headers=True)
+CV = sheet("가정!E1:I9", headers=True)
 
 # ── 위험률 시트(나이 0~110 = 원본 명명범위와 같은 범위) — 성별 열만 골라 나이 인덱스로
-R  = xl("위험률!A1:W112", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:W112", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 sx = "_남" if sex == 1 else "_여"
 '''
 
@@ -2084,7 +2084,7 @@ fig''',
                     "(원본 `총괄`), E:I에 담보 8종의 **급부배율**(원본 `총괄` 1행)\n"
                     "- 오른쪽 Y열부터 7단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
                     "코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + " · 뒤에두배(" + f"{s_cnv}" + "세 전환)**"),
                    steps_items)
@@ -2134,7 +2134,7 @@ POP_ROWS = [
 POP_GRP = list(range(0, 80, 5)) + [80, 85, 90, 90, 90]
 
 RR_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C11", headers=True)
+_p = sheet("가정!A1:C11", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 LOAD = float(P["안전할증"])                # 안전할증 — 원본 `2 산출과정` M6 = 0.5
 TOP  = int(P["최고연령"])                  # 산출 결과의 마지막 나이 — 원본 110세
@@ -2144,13 +2144,13 @@ BMI = {  # 발생자 중 BMI 30 이상 비율(국민건강영양조사) — 원�
     "50~59": (float(P["BMI30비율_남_50대"]),   float(P["BMI30비율_여_50대"])),
     "60~":   (float(P["BMI30비율_남_60이상"]), float(P["BMI30비율_여_60이상"])),
 }
-_w = xl("가정!A14:C23", headers=True)      # 원본 `2 산출과정` K51:M60
+_w = sheet("가정!A14:C23", headers=True)      # 원본 `2 산출과정` K51:M60
 GW = _w["보정치"].to_numpy(float)          # 그레빌 9항 보정계수 (r = 4 … −4)
 EW = _w["외삽치"].to_numpy(float)[:4]      # 양끝 외삽계수 4개 (원본 M52:M55)
 
 # ── 원시통계 두 시트 (외부 파일 없이 이 워크북 안에서 닫힌다)
-INC = xl("발생자수!A1:D115", headers=True).astype("int64")   # 연도·성별·연령군·발생자수
-POP = xl("추계인구!A1:F43", headers=True).astype({"성별": "int64", "연령군": "int64"})
+INC = sheet("발생자수!A1:D115", headers=True).astype("int64")   # 연도·성별·연령군·발생자수
+POP = sheet("추계인구!A1:F43", headers=True).astype({"성별": "int64", "연령군": "int64"})
 MID = [2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57, 62, 67, 72, 77, 82, 87, 90]  # 군단연령 — 원본 C9:C27
 SX = ("남", "여")
 '''
@@ -2426,7 +2426,7 @@ fig''',
                     "(원본 `2 산출과정` M6 · J:K열 · K51:M60)\n"
                     "- 오른쪽 I열부터 6단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
                     "코드와 나란히 대조해 보세요.\n\n"
                     "> 5단계의 **차이** 열이 모두 0이면 원본 산출과정표와 완전히 일치한다는 뜻입니다."),
                    steps_items)
@@ -2480,7 +2480,7 @@ NS_CHECK = [
 ]
 
 NS_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C23", headers=True)
+_p = sheet("가정!A1:C23", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 jong = int(P["종형"])              # 1 = 무해지환급형(해지율 반영), 2 = 표준형(해지율 0)
 sex  = int(P["성별"])              # 1 = 남자, 2 = 여자
@@ -2499,10 +2499,10 @@ b1, b2 = float(P["β1"]), float(P["β2"])   # 계약관리비용 (β1 = 6.8/1000
 b3, b5 = float(P["β3"]), float(P["β5"])   # 납입후유지비 β3, 기타비용 β5
 PAY = [float(P["지급률_경도치매"]), float(P["지급률_중등도치매"]),
        float(P["지급률_중증치매"]), float(P["지급률_중증치매연금"])]   # 원본 O12:R12
-ANN = xl("가정!A26:B36", headers=True)["지급률"].to_numpy(float)       # 연금 10년 지급률 — 원본 AK35:AT35
+ANN = sheet("가정!A26:B36", headers=True)["지급률"].to_numpy(float)       # 연금 10년 지급률 — 원본 AK35:AT35
 
 # ── 위험률 시트 (나이 0~100) — 나이를 인덱스로 (원본 `위험률` B7:T107)
-R = xl("위험률!A1:S102", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R = sheet("위험률!A1:S102", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 TOPAGE = int(R.index.max())
 '''
 
@@ -2911,7 +2911,7 @@ chk[["종형", "성별", "나이", "보기", "납기",
                     "급부 지급률, 사업비 α1·α2·β1·β2·β3·β5 (원본 `PV산출` 1·2번 블록)\n"
                     "- 오른쪽 V열부터 6단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 "
                     "코드와 나란히 대조해 보세요.\n\n"
                     "> **무해지환급형**은 납입기간 중 해약환급금을 주지 않는 대신 보험료를 깎은 상품입니다. "
                     "그 깎는 폭이 어디서 나오는지 — 해지율 가정이 급부 현가를 어떻게 줄이는지 — 를 "
@@ -2972,7 +2972,7 @@ WL_BENEFITS = [
 
 # 모든 코드 블록이 단독 실행되도록 가정·위험률 로드와 함수 정의를 앞에 붙인다.
 WL_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C20", headers=True)
+_p = sheet("가정!A1:C20", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex   = int(P["성별"])           # 1 = 남자, 2 = 여자                      (총괄!B2)
 x     = int(P["가입나이"])        # 가입연령                                (총괄!B3)
@@ -2990,10 +2990,10 @@ bp, gm = float(P["β'"]), float(P["γ"])       # 집금비 정액 · 수금비�
 aa2, bbbb, gg = float(P["αα2"]), float(P["ββββ"]), float(P["γγ"])   # 일시납 전용 사업비
 
 # ── 급부 5종 배율 (원본 `총괄` 1행 F1:J1)
-BEN = xl("가정!E1:I6", headers=True)
+BEN = sheet("가정!E1:I6", headers=True)
 
 # ── 위험률 시트 (나이 0~113 = 원본 명명범위 `사망`·`장해50`과 같은 범위)
-R  = xl("위험률!A1:I115", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:I115", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 sx = "_남" if sex == 1 else "_여"
 '''
 
@@ -3500,7 +3500,7 @@ fig''',
                     "α1·α2·β1·β2·β′·γ(+일시납 세트), E:I에 **급부 5종의 배율**(원본 `총괄` 1행)\n"
                     "- 오른쪽 Y열부터 7단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 "
                     "두었으니 코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + " · 전환시점 " + f"{s_cnv}" + "세**"),
                    steps_items)
@@ -3555,7 +3555,7 @@ TV_RISK_COLS = RISK_COLS + [
 TV_INC = 0.10
 
 TV_LOAD = '''# ── 가정 시트의 파라미터 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C24", headers=True)
+_p = sheet("가정!A1:C24", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex  = int(P["성별"])                       # 1 = 남자, 2 = 여자
 x0   = int(P["가입나이"])                    # 가입나이(세)
@@ -3577,7 +3577,7 @@ mult3 = float(P["미달할증배수"])              # 미달체 사망률 할증
 ridx  = float(P["위험지수"])                  # 미달체 위험지수 — 원본 `조회!E9`
 
 # ── 위험률 시트(나이 0~112) — 성별에 맞는 열만 골라 나이 인덱스 Series로
-R  = xl("위험률!A1:O114", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:O114", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 sx = "남" if sex == 1 else "여"
 q_app, f_app = R["경험사망률_" + sx], R["발생률_" + sx]        # 적용 기초 — 7회 경험사망률
 q_std, f_std = R["표준사망률_" + sx], R["표준발생률_" + sx]    # 표준 기초 — 7회 표준율
@@ -4049,7 +4049,7 @@ chk''',
                     "그리고 **미달체 사망률(×3)·미달표준 사망률(×3)** (원본 `위험률` 시트 A5:W117 중 값이 든 열)\n"
                     "- `가정` 시트 — 설계·이율·사업비율에 **체증률·체증거치기간·미달할증배수·위험지수**를 더한 것\n"
                     "- 오른쪽 R열부터 6단계의 [설명 + 코드] 블록\n\n"
-                    "**읽는 법** — 그냥 **[전체 실행]** 을 누르세요. 각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. "
+                    "**읽는 법** — 그냥 **[전체 실행]** 을 누르세요. 각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. "
                     "설명에는 원본 엑셀 수식을 그대로 인용해 두었으니 코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + f" · 가입금액 {int(q['C9']) // 10000}억원 · "
                     f"체증률 {TV_INC:.0%} · 위험지수 {float(q['E9']):.0f}**"),
@@ -4129,7 +4129,7 @@ ACC_FORMS = [
 ]
 
 AC_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C11", headers=True)
+_p = sheet("가정!A1:C11", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 jong = int(P["직종"])          # 1 = A, 2 = B                          (가입설계!C5)
 sex  = int(P["성별"])          # 1 = 남자, 2 = 여자                     (가입설계!C6)
@@ -4143,9 +4143,9 @@ b3   = float(P["β3"])          # 유지비                                (주�
 gm   = float(P["γ"])           # 수금비 1.5%                           (주계약!C19)
 v    = 1 / (1 + i)             # 주계약!AJ6 = (1+i)^-N
 
-BEN = xl("가정!E1:I5", headers=True)     # 급부 4종·급부배율        (주계약!H14:K16)
-FRM = xl("가정!K1:Q3", headers=True)     # 형태 2종·형태별 파라미터   (주계약!M5·C15·C17)
-R   = xl("위험률!A1:I5", headers=True)   # 직종 × 성별 위험률 6종    (위험율!B13·B19·B25·B31·B37·B43)
+BEN = sheet("가정!E1:I5", headers=True)     # 급부 4종·급부배율        (주계약!H14:K16)
+FRM = sheet("가정!K1:Q3", headers=True)     # 형태 2종·형태별 파라미터   (주계약!M5·C15·C17)
+R   = sheet("위험률!A1:I5", headers=True)   # 직종 × 성별 위험률 6종    (위험율!B13·B19·B25·B31·B37·B43)
 JN  = ("A", "B")[jong - 1]
 
 
@@ -4426,7 +4426,7 @@ for sx in (1, 2):
 print(f"\\n선택 조합: 직종 {JN} · {'남자' if sex == 1 else '여자'} · {x0}세"
       f" — 나이 {x0}은 주계약 공제료에 영향을 주지 않는다 (OFFSET에 나이 인수가 없다)")
 
-RD = xl(\"""" + rider_ref + """\", headers=True)
+RD = sheet(\"""" + rider_ref + """\", headers=True)
 print(f"\\n특약 위험률은 축이 반대다 — 연령별({int(RD['나이'].min())}~{int(RD['나이'].max())}세)이고"
       f" 직종 구분이 없다 (위험율!G8:M111, 수협3회)")
 print(RD[RD["나이"].isin([0, 20, 40, 50, 60, 80, 100])].to_string(index=False))
@@ -4567,7 +4567,7 @@ print(f"  분모 = TNX2 − M10/N10 = {r['TNX2']:,.2f} − {r['MT'] / r['Nm']:,.
       f" = {r['TNX2'] - r['MT'] / r['Nm']:,.2f}   (주계약!I5)")
 print(f"  만기환급금 = {r['RA']:.0%} × {r['m']}년 × {mm}회 × {r['gross']:,.0f}원"
       f" = {r['mat']:,.0f}원")
-CHK = xl("검산!A1:L9", headers=True)
+CHK = sheet("검산!A1:L9", headers=True)
 _h = CHK[(CHK["형태"] == "만기환급형(50%)") & (CHK["직종"] == JN)
          & (CHK["성별"].astype(int) == sex)].iloc[0]
 print(f"  원본 PV테이블 연시준비금(경과 {r['n']}) = {float(_h['만기환급금']):,.0f}원"
@@ -4643,7 +4643,7 @@ out""",
          "읽을 수 없었습니다. 검산은 xlsm 안의 `PV테이블`로 대신했습니다.",
          "원본 PV테이블 8행 대조 (차이 열)",
          full + """
-CHK = xl("검산!A1:L9", headers=True)
+CHK = sheet("검산!A1:L9", headers=True)
 rec = []
 for _, row in CHK.iterrows():
     jn, sx, form = row["직종"], int(row["성별"]), row["형태"]
@@ -4732,7 +4732,7 @@ fig""",
                     "- `검산` 시트 — 원본 `PV테이블` 공제료 블록의 주계약 8행(형태 2 × 직종 2 × 성별 2)\n"
                     "- 오른쪽 Y열부터 7단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 "
                     "인용해 두었으니 코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + "**"),
                    steps_items)
@@ -4962,7 +4962,7 @@ def sample_rate_cols(fname, sheet_name="위험률"):
 
 # 모든 코드 블록이 단독 실행되도록 가정·위험률 로드를 앞에 붙인다.
 CI_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C16", headers=True)
+_p = sheet("가정!A1:C16", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex   = int(P["성별"])            # 1 = 남자, 2 = 여자
 x     = int(P["가입나이"])         # 가입나이(세) — 방법서 6.(주)① x
@@ -4978,10 +4978,10 @@ pi_m  = PI[0] if m <= 5 else (PI[1] if m <= 10 else PI[2])   # 장해자 납입�
 v     = 1.0 / (1.0 + i)                                      # ⑰ v = 1/(1+i)
 
 # ── 담보 12행 — w1~w10 · b(중대한 화상 및 부식) · w11(유방암)
-W = xl("가정!E1:I13", headers=True)
+W = sheet("가정!E1:I13", headers=True)
 
 # ── 위험률 시트(나이 20~110). 80세 이후 LTC 열은 원본 자료에 값이 없어 0
-R  = xl("위험률!A1:U92", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:U92", headers=True).fillna(0.0).astype({"나이": "int64"}).set_index("나이")
 sx = "_남" if sex == 1 else "_여"
 LAST = int(R.index.max())
 '''
@@ -5690,7 +5690,7 @@ fig''',
                     "E:I에 담보 12종의 `기준`·`계수`\n"
                     "- 오른쪽 X열부터 7단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드를 순서대로 실행하거나 그냥 **[전체 실행]**을 "
-                    "누르세요. 각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. "
+                    "누르세요. 각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. "
                     "설명에는 방법서 수식을 **원문 그대로** 인용해 두었으니 코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + "** · 사망 100% · CI 또는 LTC 발생 시 50% 선지급"),
                    steps_items)
@@ -5774,7 +5774,7 @@ CA_RISK_COLS = [
 
 # 모든 코드 블록이 단독 실행되도록 가정·데이터 로드를 앞에 붙인다.
 CA_LOAD = '''# ── 가정 시트 — 값을 바꾸고 [전체 실행]하면 이후 모든 단계가 다시 계산된다
-_p = xl("가정!A1:C21", headers=True)
+_p = sheet("가정!A1:C21", headers=True)
 P = dict(zip(_p["항목"], _p["값"]))
 sex  = int(P["성별"])          # 1 = 남자, 2 = 여자                 (급부기준!B23)
 x    = int(P["가입나이"])       # 가입연령                           (급부기준!B24)
@@ -5797,9 +5797,9 @@ b1, b2, b5 = float(P["β1"]), float(P["β2"]), float(P["β5"])
 NR = 98        # 원본 기수표 행 7~104 = 경과년도 0~97 (가입나이와 무관하게 고정)
 
 # ── 위험률 (나이 0~111 × 10종 × 남/여) — 원본 `위험률` A5:U116
-R  = xl("위험률!A1:U113", headers=True).astype({"나이": "int64"}).set_index("나이")
+R  = sheet("위험률!A1:U113", headers=True).astype({"나이": "int64"}).set_index("나이")
 # ── 암발생후사망률 2차원표 (성별 × 진단연령 × 진단 후 경과 0~10)
-SD = xl("암발생후사망률!A1:M195", headers=True).astype({"성별": "int64", "연령": "int64"})
+SD = sheet("암발생후사망률!A1:M195", headers=True).astype({"성별": "int64", "연령": "int64"})
 sx = "_남" if sex == 1 else "_여"
 '''
 
@@ -6372,7 +6372,7 @@ fig''',
                     "(원본 `급부기준`과 `기수표(생활비암)` CK/CP 블록)\n"
                     "- 오른쪽 Y열부터 7단계의 [설명 + 코드] 블록\n\n"
                     "**읽는 법** — 설명을 읽고 코드 블록을 순서대로 실행하거나, 그냥 **[전체 실행]**을 누르세요. "
-                    "각 블록은 `xl()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 "
+                    "각 블록은 `sheet()`로 시트를 다시 읽어 단독 실행됩니다. 설명에는 원본 엑셀 수식을 그대로 인용해 "
                     "두었으니 코드와 나란히 대조해 보세요.\n\n"
                     "> 현재 설계: **" + design + "**"),
                    steps_items)
@@ -6429,7 +6429,7 @@ fig''',
 #  · 단일 분할 성능 대신 5겹 교차검증 평균±표준편차를 함께 본다.
 #  · 모델은 Ridge·Lasso·ElasticNet + 다항·로그로 한정한다(트리·베이지안 최적화 제외).
 
-WAGE_REF = 'df = xl("wage!A1:K535", headers=True)'
+WAGE_REF = 'df = sheet("wage!A1:K535", headers=True)'
 WAGE_CONST = '''TARGET = "WAGE"
 CAT = ["SOUTH", "SEX", "UNION", "RACE", "OCCUPATION", "SECTOR", "MARR"]   # 코드로 저장된 범주형
 NUM = ["EDUCATION", "EXPERIENCE", "AGE"]'''
@@ -6450,7 +6450,7 @@ WAGE_STEPS = [
     (2,
      "1단계 — 데이터 개요·품질 점검 〔통계분석〕",
      "## 1단계 — 데이터 개요·품질 점검 〔통계분석〕\n\n"
-     "`wage` 시트의 534행 × 11열을 `xl()`로 읽습니다. 모델을 고르기 전에 **데이터가 성한지** 먼저 봅니다 — "
+     "`wage` 시트의 534행 × 11열을 `sheet()`로 읽습니다. 모델을 고르기 전에 **데이터가 성한지** 먼저 봅니다 — "
      "행·열 수, 열마다의 형, 결측·중복, 그리고 0의 비율입니다.\n\n"
      "0 비율을 따로 보는 이유는 0이 진짜 값일 때와 '해당 없음'일 때가 섞이기 때문입니다. "
      "`SOUTH`·`SEX`·`UNION`·`MARR`의 0은 값(남부 아님·남성·비조합원·미혼)이고, `EXPERIENCE`의 0은 신입입니다.\n\n"
@@ -6569,7 +6569,7 @@ res.round(4)''',
      "> 코드 삽입 ▸ 통계분석 ▸ 전처리 과정 ▸ **열 역할 확정**",
      "코드북(meta) 기준 열 분류",
      WAGE_REF + '''
-meta = xl("meta!A1:H8", headers=True)
+meta = sheet("meta!A1:H8", headers=True)
 TARGET = "WAGE"
 
 # meta에 열 이름이 등재되어 있으면 그 열의 값은 '코드'다 — 범주형으로 되돌린다

@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 블록 기본은 '시트에 추가 안 함' — 이 스펙은 샘플·블록 결과를 시트 셀에서 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // M7: 저장→열기 왕복, 샘플 워크북 실행(생명표 lx spill + 히스토그램 카드), XLSX 내보내기
 
 async function waitForApp(page: Page) {
@@ -33,7 +41,7 @@ test("저장 다운로드 → 새 워크북 → 다시 열기 → 셀·블록 �
     st.setTitle("왕복검증");
     st.setCellValue(sid, 0, 0, { v: "왕복", t: "s" });
     const id = st.addPyBlock(sid, { r: 0, c: 3 });
-    st.setBlockCode(id, 'xl("A1")');
+    st.setBlockCode(id, 'sheet("A1")');
   });
 
   // 저장 (.pygrid.json) 다운로드
@@ -60,7 +68,7 @@ test("저장 다운로드 → 새 워크북 → 다시 열기 → 셀·블록 �
     return { title: wb.title, code: wb.pyBlocks[0]?.code, anchor: wb.pyBlocks[0]?.anchor };
   });
   expect(restored.title).toBe("왕복검증");
-  expect(restored.code).toBe('xl("A1")');
+  expect(restored.code).toBe('sheet("A1")');
   expect(restored.anchor).toEqual({ r: 0, c: 3 });
 });
 

@@ -47,8 +47,8 @@ test("G4: 의존 블록 자동 재계산 + 순환 참조", async ({ page }) => {
     ]);
     const a = st.addPyBlock(sid, { r: 0, c: 2 });
     const b = st.addPyBlock(sid, { r: 0, c: 4 });
-    st.setBlockCode(a, 'xl("A1") + xl("A2")');
-    st.setBlockCode(b, 'xl("C1") * 10');
+    st.setBlockCode(a, 'sheet("A1") + sheet("A2")');
+    st.setBlockCode(b, 'sheet("C1") * 10');
   });
 
   await page.getByRole("button", { name: "전체 실행", exact: true }).click();
@@ -79,7 +79,7 @@ test("G4: 의존 블록 자동 재계산 + 순환 참조", async ({ page }) => {
   // 순환: A가 B의 spill(E1)을 참조 → A↔B 순환 → 둘 다 #PYTHON! 순환 참조
   await page.evaluate(() => {
     const st = (window as any).__pygridStore.getState();
-    st.setBlockCode(st.workbook.pyBlocks[0].id, 'xl("E1") + 1');
+    st.setBlockCode(st.workbook.pyBlocks[0].id, 'sheet("E1") + 1');
   });
   await page.getByRole("button", { name: "전체 실행", exact: true }).click();
   for (const key of ["0:2", "0:4"]) {

@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 //
 // 시나리오: 임금 회귀 워크북을 열고 → 그리드에서 데이터 범위를 선택 → 코드 삽입 팝업에서
 // 통계분석 5개 하위 카테고리의 조각을 하나씩 새 블록으로 넣고 → 각각 실행해 'ok'를 확인한다.
-// {{range}} 자리표시자가 선택 범위의 xl() 호출로 치환되는지도 함께 본다.
+// {{range}} 자리표시자가 선택 범위의 sheet() 호출로 치환되는지도 함께 본다.
 //
 // scikit-learn 첫 로드가 있어 상한을 넉넉히 둔다.
 
@@ -67,13 +67,13 @@ test("예제 코드 불러오기 — 통계분석 5개 카테고리를 차례로
     const re = new RegExp(step.snippet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     await dialog.getByRole("button", { name: re }).click();
 
-    // {{range}} → 그리드 선택 범위의 xl() 호출로 치환 (자동 선택된 유일 후보)
+    // {{range}} → 그리드 선택 범위의 sheet() 호출로 치환 (자동 선택된 유일 후보)
     const preview = dialog.getByTestId("snippet-code-preview");
     const rangeSelect = dialog.getByLabel("자리표시자 {{range}}");
     if (await rangeSelect.isVisible()) {
       await rangeSelect.click();
-      await page.getByRole("option", { name: /xl\(/ }).click();
-      await expect(preview).toContainText('xl("A1:K535", headers=True)');
+      await page.getByRole("option", { name: /sheet\(/ }).click();
+      await expect(preview).toContainText('sheet("A1:K535", headers=True)');
     }
 
     // 기준 블록이 없으면(첫 삽입) 버튼이 "새 블록으로" 하나로 줄어든다

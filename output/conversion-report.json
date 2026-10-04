@@ -68,6 +68,10 @@
     "pass": true
   },
   {
+    "row": "sheet(): 정식 이름 — xl()과 같은 함수, 참조 추출·비리터럴 오류도 같은 규칙",
+    "pass": true
+  },
+  {
     "row": "extract_refs: 비리터럴 인수 → 한국어 오류 (§2.4)",
     "pass": true
   },

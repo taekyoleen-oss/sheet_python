@@ -23,6 +23,9 @@ export const srcBlockId = (src: string): string => {
 export const bindingTag = (blockId: string, o: OutputBinding): string =>
   o.id ? srcTag(blockId, o.id) : blockId;
 
+/** 이 출력을 시트 셀에 쓰는가 — 블록이 '시트에 추가'된 상태이고 출력 자체가 꺼지지 않았을 때만 */
+export const onSheet = (b: PyBlock, o: OutputBinding): boolean => b.toSheet === true && !o.off;
+
 /** 코드 블록의 출력 목록. 마크다운은 빈 배열, 정규화 전 블록은 레거시 필드로 합성 */
 export function outputsOf(b: PyBlock): OutputBinding[] {
   if (b.outputs && b.outputs.length > 0) return b.outputs;
@@ -55,6 +58,13 @@ export function syncLegacy(b: PyBlock): void {
 
 /** 코드 블록에 출력 바인딩 최소 1개를 보장한다 (레거시 필드에서 유도) */
 export function normalizeBlock(b: PyBlock): void {
+  // e2e 전용 스위치(__pygridStore와 같은 테스트 훅): spill을 검증하는 스펙은 블록을 시트에 추가된 상태로 시작
+  if (
+    b.kind !== "markdown" &&
+    b.toSheet === undefined &&
+    (globalThis as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault === true
+  )
+    b.toSheet = true;
   if (b.kind === "markdown") {
     if (b.outputs) delete b.outputs; // 마크다운은 출력이 없다
     return;
@@ -82,8 +92,19 @@ export function normalizeBlock(b: PyBlock): void {
  */
 export function normalizeWorkbook(wb: Workbook): Workbook {
   const firstTag = new Map<string, string>();
+  // 시트에 쓰지 않는 블록·출력 — 저장된 옛 spill 셀은 지운다
+  const offIds = new Set<string>();
+  const offTags = new Set<string>();
   for (const b of wb.pyBlocks) {
     normalizeBlock(b);
+    if (b.kind === "markdown") continue;
+    if (b.toSheet !== true) offIds.add(b.id);
+    for (const o of b.outputs ?? []) {
+      if (onSheet(b, o)) continue;
+      offTags.add(srcTag(b.id, o.id));
+      if (o.last?.spillRange) delete o.last.spillRange;
+    }
+    syncLegacy(b);
     const first = b.outputs?.[0];
     if (first) firstTag.set(b.id, srcTag(b.id, first.id));
   }
@@ -91,6 +112,10 @@ export function normalizeWorkbook(wb: Workbook): Workbook {
   for (const sheet of wb.sheets) {
     for (const key of Object.keys(sheet.cells)) {
       const src = sheet.cells[key].src;
+      if (src && (offTags.has(src) || (!src.includes(":") && offIds.has(src)))) {
+        delete sheet.cells[key];
+        continue;
+      }
       if (!src || src.includes(":")) continue;
       const tag = firstTag.get(src);
       if (tag) sheet.cells[key] = { ...sheet.cells[key], src: tag };

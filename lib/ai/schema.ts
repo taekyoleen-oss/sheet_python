@@ -7,7 +7,7 @@ import { usedRange } from "@/lib/io/data-import";
 
 export interface SheetSchema {
   name: string;
-  /** 사용 범위 A1 (예: "A1:F601") — xl() 참조에 그대로 쓸 수 있다 */
+  /** 사용 범위 A1 (예: "A1:F601") — sheet() 참조에 그대로 쓸 수 있다 */
   range: string;
   /** 첫 행 문자열(헤더 후보, 최대 60열). 데이터 값은 전송하지 않는다 */
   headers: string[];

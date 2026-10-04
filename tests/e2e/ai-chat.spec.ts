@@ -44,7 +44,7 @@ test("AI 채팅: 토글 → 키 유도 → 코드 카드 → 블록 반영 → �
   // ── 모킹: 텍스트 + python 코드 블록 응답
   let sentBody = "";
   let reply =
-    "합계 코드입니다.\n```python\ntotal = xl(\"A1:A3\").sum()\ntotal\n```";
+    "합계 코드입니다.\n```python\ntotal = sheet(\"A1:A3\").sum()\ntotal\n```";
   await page.route("https://api.anthropic.com/**", async (route) => {
     sentBody = route.request().postData() ?? "";
     await route.fulfill({
@@ -56,7 +56,7 @@ test("AI 채팅: 토글 → 키 유도 → 코드 카드 → 블록 반영 → �
   await panel.getByRole("button", { name: "전송" }).click(); // 입력은 그대로 남아 있다
   const codeCard = panel.getByTestId("chat-code-card");
   await expect(codeCard).toBeVisible({ timeout: 15_000 });
-  await expect(codeCard).toContainText('total = xl("A1:A3").sum()');
+  await expect(codeCard).toContainText('total = sheet("A1:A3").sum()');
   // 시스템 프롬프트: 앱 규칙 + 사용자 지침 레이어 + 우선 순위 문구 + 지침 펜스 계약
   expect(sentBody).toContain("시트기반 파이썬");
   expect(sentBody).toContain("앱 규칙이 우선");
@@ -73,7 +73,7 @@ test("AI 채팅: 토글 → 키 유도 → 코드 카드 → 블록 반영 → �
   const block = await page.evaluate(
     () => (window as any).__pygridStore.getState().workbook.pyBlocks[0],
   );
-  expect(block.code).toContain('total = xl("A1:A3").sum()');
+  expect(block.code).toContain('total = sheet("A1:A3").sum()');
   expect(block.last).toBeUndefined();
 
   // ── 지침 펜스 응답 → 확인 카드 (코드 카드로 렌더되지 않는다) → [반영]

@@ -57,7 +57,7 @@ test("생성 바 → 채팅 라우팅: 키 미설정 유도 → 키 저장 → �
                 id: "tu1",
                 name: "propose_block",
                 input: {
-                  code: 'df = xl("A1:B3", headers=True)\ndf.sum()',
+                  code: 'df = sheet("A1:B3", headers=True)\ndf.sum()',
                   title: "합계",
                 },
               },
@@ -76,7 +76,7 @@ test("생성 바 → 채팅 라우팅: 키 미설정 유도 → 키 저장 → �
 
   const card = panel.getByTestId("block-proposal");
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await expect(card).toContainText('df = xl("A1:B3", headers=True)');
+  await expect(card).toContainText('df = sheet("A1:B3", headers=True)');
 
   // 4) [아래 새 블록] → 블록 생성, 자동 실행 없음
   await card.getByRole("button", { name: "아래 새 블록" }).click();
@@ -91,7 +91,7 @@ test("생성 바 → 채팅 라우팅: 키 미설정 유도 → 키 저장 → �
     () => (window as any).__pygridStore.getState().workbook.pyBlocks[0],
   );
   expect(block.title).toBe("합계");
-  expect(block.code).toContain('df = xl("A1:B3", headers=True)');
+  expect(block.code).toContain('df = sheet("A1:B3", headers=True)');
   expect(block.last).toBeUndefined(); // 자동 실행 없음
 
   // 요청이 저장된 키·이 앱 규칙 프롬프트로 나갔는지 (모킹 라우트에서 캡처)

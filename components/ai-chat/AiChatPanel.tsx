@@ -673,7 +673,7 @@ export default function AiChatPanel({ onClose }: { onClose?: () => void }) {
           <DialogHeader>
             <DialogTitle>채팅 지침</DialogTitle>
             <DialogDescription>
-              이 브라우저에만 저장되며 워크북 파일에는 포함되지 않습니다. 앱 규칙(xl()·안전
+              이 브라우저에만 저장되며 워크북 파일에는 포함되지 않습니다. 앱 규칙(sheet()·안전
               규칙)과 충돌하면 앱 규칙이 우선합니다.
             </DialogDescription>
           </DialogHeader>

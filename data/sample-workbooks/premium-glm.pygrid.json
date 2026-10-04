@@ -38189,7 +38189,7 @@
    "includeIndex": "auto",
    "kind": "markdown",
    "title": "보험료 요인 분석 (GLM)",
-   "markdown": "# 보험료 요인 분석 (GLM)\n\n`policy` 시트에 계약·고객 600건(연령·BMI·부양가족·상품·채널·지역·성별·보험료 등 16열)이 들어 있습니다.\n기술통계와 교차표로 감을 잡은 뒤 **감마 GLM(로그 링크)**로 보험료 요인을 추정하고,\n계수의 지수를 **상대도**로 읽습니다.\n\n> 모든 블록은 `xl(\"policy!A1:P601\")`로 시트를 다시 읽어 단독 실행됩니다."
+   "markdown": "# 보험료 요인 분석 (GLM)\n\n`policy` 시트에 계약·고객 600건(연령·BMI·부양가족·상품·채널·지역·성별·보험료 등 16열)이 들어 있습니다.\n기술통계와 교차표로 감을 잡은 뒤 **감마 GLM(로그 링크)**로 보험료 요인을 추정하고,\n계수의 지수를 **상대도**로 읽습니다.\n\n> 모든 블록은 `sheet(\"policy!A1:P601\")`로 시트를 다시 읽어 단독 실행됩니다."
   },
   {
    "id": "blk-glm-md1",
@@ -38203,7 +38203,7 @@
    "includeIndex": "auto",
    "kind": "markdown",
    "title": "1단계 — 기술통계·교차표",
-   "markdown": "## 1단계 — 기술통계·교차표\n\n`policy` 시트의 계약 600건(16열)을 `xl()`로 읽어 숫자 열의 분포와 결측을 먼저 확인합니다.\n그다음 **상품 × 채널** 평균 보험료 교차표를 만들어 요인이 실제로 보험료를 가르는지 눈으로 봅니다 —\n여기서 보이는 차이는 다른 요인(연령·지역)이 섞인 **조 평균**이라, 다음 단계의 GLM으로 분리해야 합니다."
+   "markdown": "## 1단계 — 기술통계·교차표\n\n`policy` 시트의 계약 600건(16열)을 `sheet()`로 읽어 숫자 열의 분포와 결측을 먼저 확인합니다.\n그다음 **상품 × 채널** 평균 보험료 교차표를 만들어 요인이 실제로 보험료를 가르는지 눈으로 봅니다 —\n여기서 보이는 차이는 다른 요인(연령·지역)이 섞인 **조 평균**이라, 다음 단계의 GLM으로 분리해야 합니다."
   },
   {
    "id": "blk-glm-c1",
@@ -38215,7 +38215,7 @@
    "outputMode": "values",
    "includeIndex": "auto",
    "title": "기술통계 · 상품×채널 평균 보험료",
-   "code": "df = xl(\"policy!A1:P601\", headers=True)\nprint(df[[\"age\", \"premium\", \"bmi\", \"dependents\", \"income\", \"tenure_months\"]].describe().round(1))\nprint(\"결측 열:\", {k: int(v) for k, v in df.isna().sum().items() if v})\npv = df.pivot_table(index=\"product\", columns=\"channel\", values=\"premium\", aggfunc=\"mean\").round(0)\npv[\"전체\"] = df.groupby(\"product\")[\"premium\"].mean().round(0)\npv"
+   "code": "df = sheet(\"policy!A1:P601\", headers=True)\nprint(df[[\"age\", \"premium\", \"bmi\", \"dependents\", \"income\", \"tenure_months\"]].describe().round(1))\nprint(\"결측 열:\", {k: int(v) for k, v in df.isna().sum().items() if v})\npv = df.pivot_table(index=\"product\", columns=\"channel\", values=\"premium\", aggfunc=\"mean\").round(0)\npv[\"전체\"] = df.groupby(\"product\")[\"premium\"].mean().round(0)\npv"
   },
   {
    "id": "blk-glm-md2",
@@ -38241,7 +38241,7 @@
    "outputMode": "values",
    "includeIndex": "auto",
    "title": "GLM 계수표 · 상대도",
-   "code": "import statsmodels.api as sm\ndf = xl(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nprint(f\"관측 {int(res.nobs)}건 · 이탈도 {res.deviance:.1f} · AIC {res.aic:.1f}\")\npd.DataFrame({\"요인\": res.params.index.to_numpy(),\n              \"계수\": res.params.to_numpy().round(4),\n              \"상대도 exp(계수)\": np.exp(res.params).to_numpy().round(3),\n              \"표준오차\": res.bse.to_numpy().round(4),\n              \"p값\": res.pvalues.to_numpy().round(4)})"
+   "code": "import statsmodels.api as sm\ndf = sheet(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nprint(f\"관측 {int(res.nobs)}건 · 이탈도 {res.deviance:.1f} · AIC {res.aic:.1f}\")\npd.DataFrame({\"요인\": res.params.index.to_numpy(),\n              \"계수\": res.params.to_numpy().round(4),\n              \"상대도 exp(계수)\": np.exp(res.params).to_numpy().round(3),\n              \"표준오차\": res.bse.to_numpy().round(4),\n              \"p값\": res.pvalues.to_numpy().round(4)})"
   },
   {
    "id": "blk-glm-md3",
@@ -38267,7 +38267,7 @@
    "outputMode": "object",
    "includeIndex": "auto",
    "title": "범주형 요인 상대도 그림",
-   "code": "import statsmodels.api as sm\nimport matplotlib.pyplot as plt\ndf = xl(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nsel = [n for n in res.params.index if any(n.startswith(c + \"_\") for c in CAT)]\nrel = np.exp(res.params[sel]).to_numpy()\nlab = [n + (\"*\" if res.pvalues[n] < 0.05 else \"\") for n in sel]\nfig, ax = plt.subplots(figsize=(8, 3.8))\nax.bar(lab, rel, color=\"#4A90C2\")\nax.axhline(1.0, color=\"#999\", lw=1, ls=\"--\")\nax.set_title(\"범주형 요인 상대도 exp(계수) — * 는 p<0.05\")\nax.set_ylabel(\"기준 수준 대비 배수\")\nax.tick_params(axis=\"x\", rotation=45, labelsize=8)\nfig.tight_layout()\nfig"
+   "code": "import statsmodels.api as sm\nimport matplotlib.pyplot as plt\ndf = sheet(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nsel = [n for n in res.params.index if any(n.startswith(c + \"_\") for c in CAT)]\nrel = np.exp(res.params[sel]).to_numpy()\nlab = [n + (\"*\" if res.pvalues[n] < 0.05 else \"\") for n in sel]\nfig, ax = plt.subplots(figsize=(8, 3.8))\nax.bar(lab, rel, color=\"#4A90C2\")\nax.axhline(1.0, color=\"#999\", lw=1, ls=\"--\")\nax.set_title(\"범주형 요인 상대도 exp(계수) — * 는 p<0.05\")\nax.set_ylabel(\"기준 수준 대비 배수\")\nax.tick_params(axis=\"x\", rotation=45, labelsize=8)\nfig.tight_layout()\nfig"
   },
   {
    "id": "blk-glm-md4",
@@ -38293,7 +38293,7 @@
    "outputMode": "values",
    "includeIndex": "auto",
    "title": "상품×채널 관측 vs 예측",
-   "code": "import statsmodels.api as sm\ndf = xl(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nd[\"예측\"] = res.fittedvalues\ng = d.groupby([\"product\", \"channel\"]).agg(\n    계약수=(\"premium\", \"size\"), 관측평균=(\"premium\", \"mean\"), 예측평균=(\"예측\", \"mean\"))\ng[\"차이%\"] = ((g[\"예측평균\"] / g[\"관측평균\"] - 1) * 100).round(1)\ng[[\"관측평균\", \"예측평균\"]] = g[[\"관측평균\", \"예측평균\"]].round(0)\ng.reset_index()"
+   "code": "import statsmodels.api as sm\ndf = sheet(\"policy!A1:P601\", headers=True)\nd = df.copy()\nd[\"income\"] = d[\"income\"].fillna(d[\"income\"].median())     # 소득 결측 75건은 중앙값 대치\nNUM = [\"age\", \"bmi\", \"dependents\", \"tenure_months\"]\nCAT = [\"product\", \"channel\", \"region\", \"sex\"]\nX = sm.add_constant(pd.get_dummies(d[NUM + CAT], columns=CAT, drop_first=True, dtype=float))\nres = sm.GLM(d[\"premium\"].astype(float), X,\n             family=sm.families.Gamma(link=sm.families.links.Log())).fit()\n\nd[\"예측\"] = res.fittedvalues\ng = d.groupby([\"product\", \"channel\"]).agg(\n    계약수=(\"premium\", \"size\"), 관측평균=(\"premium\", \"mean\"), 예측평균=(\"예측\", \"mean\"))\ng[\"차이%\"] = ((g[\"예측평균\"] / g[\"관측평균\"] - 1) * 100).round(1)\ng[[\"관측평균\", \"예측평균\"]] = g[[\"관측평균\", \"예측평균\"]].round(0)\ng.reset_index()"
   }
  ],
  "initScript": "",

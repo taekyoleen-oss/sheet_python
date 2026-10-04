@@ -32,7 +32,7 @@ export interface EditorHandle {
 }
 export const editorRegistry = new Map<string, EditorHandle>();
 
-const XL_RE = /xl\(\s*(["'])([^"']+)\1/g;
+const XL_RE = /\b(?:sheet|xl)\(\s*(["'])([^"']+)\1/g;
 
 const xlDecorator = new MatchDecorator({
   regexp: XL_RE,

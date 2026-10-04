@@ -27,16 +27,16 @@ import {
   type Sheet,
 } from "@/types/workbook";
 import { setFormulaNotifier, useWorkbookStore, type OutputApply } from "./model";
-import { outputsOf, srcBlockId, srcTag } from "./outputs";
+import { onSheet, outputsOf, srcBlockId, srcTag } from "./outputs";
 import { checkSpillConflict } from "./spill";
 
 const getState = () => useWorkbookStore.getState();
 
 /** 블록이 점유한 출력 영역 — 값 모드는 마지막 spill, 그 밖(객체·미실행)은 앵커 1×1 (부록 D.1) */
 const areasOf = (b: PyBlock): OutputArea[] =>
-  b.toSheet === false
-    ? [] // 시트로 보내지 않는 블록은 셀을 차지하지 않는다
-    : outputsOf(b).map((o) => {
+  outputsOf(b)
+    .filter((o) => onSheet(b, o)) // 시트에 쓰지 않는 출력은 셀을 차지하지 않는다
+    .map((o) => {
     const rg =
       o.mode === "values" && o.last?.status === "ok" && o.last.spillRange
         ? o.last.spillRange
@@ -48,23 +48,22 @@ const areasOf = (b: PyBlock): OutputArea[] =>
 export function makeView(): WorkbookView {
   const wb = getState().workbook;
   return {
-    blocks: wb.pyBlocks.map(
-      ({ id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs, toSheet }) =>
-        toSheet === false
-          ? // 시트로 보내지 않는 블록은 객체 모드로 실행 — 셀 대신 미리보기(표·이미지·repr)를 받는다
-            {
-              id,
-              sheetId,
-              anchor,
-              code,
-              outputMode: "object" as const,
-              includeIndex,
-              output,
-              kind,
-              outputs: outputs?.map((o) => ({ ...o, mode: "object" as const })),
-            }
-          : { id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs },
-    ),
+    // 시트에 쓰지 않는 출력은 객체 모드로 실행 — 셀 대신 미리보기(표·이미지·repr)를 받는다
+    blocks: wb.pyBlocks.map((b) => {
+      const { id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs } = b;
+      const first = outputsOf(b)[0];
+      return {
+        id,
+        sheetId,
+        anchor,
+        code,
+        outputMode: first && !onSheet(b, first) ? ("object" as const) : outputMode,
+        includeIndex,
+        output,
+        kind,
+        outputs: outputs?.map((o) => (onSheet(b, o) ? o : { ...o, mode: "object" as const })),
+      };
+    }),
     sheetOrder: wb.sheets.map((s) => s.id),
     spills: new Map(
       wb.pyBlocks.map((b) => [
@@ -138,6 +137,7 @@ export const calcHost: CalcHost = {
     runSeq.set(blockId, seq);
     const st = getState();
     st.setBlockRunning(blockId, false);
+    st.markExecuted(blockId);
     st.clearDirty(blockId);
     const block = st.workbook.pyBlocks.find((b) => b.id === blockId);
     if (!block) return;
@@ -171,7 +171,8 @@ export const calcHost: CalcHost = {
         block.anchor,
         [cells.length, cells[0].length],
       );
-      if (conflict && block.toSheet !== false) {
+      const first = block.outputs?.[0];
+      if (conflict && first && onSheet(block, first)) {
         st.applyBlockResult(blockId, [[{ v: "#SPILL!", t: "e" }]], {
           last: { ...base, status: "spill", summaryKo: conflict },
         });
@@ -181,7 +182,7 @@ export const calcHost: CalcHost = {
         last: { ...base, spillRange: spill },
         clearPrevious: true,
       });
-      if (block.toSheet !== false) {
+      if (first && onSheet(block, first)) {
         st.setFlash({ sheetId: block.sheetId, range: spill });
         setTimeout(() => getState().setFlash(null), 400);
       }
@@ -229,6 +230,7 @@ export const calcHost: CalcHost = {
     runSeq.set(blockId, seq);
     const st0 = getState();
     st0.setBlockRunning(blockId, false);
+    st0.markExecuted(blockId);
     st0.clearDirty(blockId);
     if (!st0.workbook.pyBlocks.some((b) => b.id === blockId)) return;
     // 실행 자체가 실패하면 items는 빈 배열 — 모든 출력에 오류를 표시한다 (계약 문서)
@@ -322,7 +324,7 @@ export const calcHost: CalcHost = {
             binding.anchor,
             [cells.length, cells[0].length],
           );
-          if (conflict && block.toSheet !== false) {
+          if (conflict && onSheet(block, binding)) {
             applies.push({
               outputId,
               cells: [[{ v: "#SPILL!", t: "e" }]],
@@ -331,14 +333,14 @@ export const calcHost: CalcHost = {
             continue;
           }
           write(cells, { ...base, spillRange: spill });
-          flash ??= { sheetId: sheet.id, range: spill };
+          if (onSheet(block, binding)) flash ??= { sheetId: sheet.id, range: spill };
         } else {
           // 객체 모드(또는 셀이 없는 결과) — 앵커 1칸 카드 라벨
           const label = `[${item.typeName ?? item.kind}${
             item.shape ? ` ${item.shape[0]}×${item.shape[1]}` : ""
           }]`;
           write([[{ v: label, t: "s" }]], base);
-          flash ??= {
+          if (onSheet(block, binding)) flash ??= {
             sheetId: sheet.id,
             range: {
               r0: binding.anchor.r,
@@ -350,7 +352,7 @@ export const calcHost: CalcHost = {
         }
       }
       st.applyOutputResults(blockId, applies);
-      // 부록 J.3: 이 실행이 읽은 xl() 참조를 그리드 표시용으로 기록 (분석 캐시 재사용 — 값싸다)
+      // 부록 J.3: 이 실행이 읽은 sheet() 참조를 그리드 표시용으로 기록 (분석 캐시 재사용 — 값싸다)
       void analyzedRefs(block.code).then((refs) => {
         const now = getState();
         if (!now.workbook.pyBlocks.some((b) => b.id === blockId)) return;
@@ -360,7 +362,7 @@ export const calcHost: CalcHost = {
           now.setExecutedRefs(blockId, null);
         }
       });
-      if (flash && block.toSheet !== false) {
+      if (flash) {
         st.setFlash(flash);
         setTimeout(() => getState().setFlash(null), 400);
       }

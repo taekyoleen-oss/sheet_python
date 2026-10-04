@@ -75,7 +75,7 @@ def xl(ref, headers=False):
     return pd.DataFrame(block).infer_objects()
 
 def _run_block(code):
-    g = {"pd": pd, "np": np, "xl": xl, "__name__": "__pygrid__"}
+    g = {"pd": pd, "np": np, "xl": xl, "sheet": xl, "__name__": "__pygrid__"}
     buf = io.StringIO()
     try:
         tree = ast.parse(code)

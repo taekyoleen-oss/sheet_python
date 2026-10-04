@@ -342,6 +342,15 @@ row("extract_refs: 리터럴 추출·중복 제거·순서 유지", () => {
   expect(extractRefs("print(1)")).toEqual({ ok: true, refs: [] });
 });
 
+row("sheet(): 정식 이름 — xl()과 같은 함수, 참조 추출·비리터럴 오류도 같은 규칙", () => {
+  inject({ A1: { values: [[7]], types: [["n"]], scalar: true } });
+  expect(pyEval('sheet("A1") == 7 and sheet is xl')).toBe(true);
+  expect(extractRefs('a = sheet("A1")\nb = xl("B1:B2")')).toEqual({ ok: true, refs: ["A1", "B1:B2"] });
+  const r = extractRefs('ref = "A1"\nsheet(ref)');
+  expect(r.ok).toBe(false);
+  expect(r.message).toBe("sheet() 인수는 문자열 리터럴이어야 합니다");
+});
+
 row("extract_refs: 비리터럴 인수 → 한국어 오류 (§2.4)", () => {
   const r = extractRefs('ref = "A1"\nxl(ref)');
   expect(r.ok).toBe(false);

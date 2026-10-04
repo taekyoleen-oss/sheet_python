@@ -51,8 +51,8 @@ export function buildPandasLoadCode(name: string, encoding: string | null): stri
     // 워커는 import 문 기반으로만 패키지를 지연 로드한다(loadPackagesFromImports) —
     // pd.read_excel의 지연 openpyxl import는 못 보므로 명시 import로 로드를 유도한다.
     // 현재 Pyodide 배포에는 Excel 엔진이 없어 ImportError가 난다(런타임 소관, parity E7) —
-    // xlsx는 xl() 모드를 권장. 엔진이 추가되면 이 코드가 그대로 동작한다.
-    ...(isExcel ? ["import openpyxl  # pd.read_excel 엔진 (없으면 xl() 모드 사용)"] : []),
+    // xlsx는 sheet() 모드를 권장. 엔진이 추가되면 이 코드가 그대로 동작한다.
+    ...(isExcel ? ["import openpyxl  # pd.read_excel 엔진 (없으면 sheet() 모드 사용)"] : []),
     ...(encoding === "cp949"
       ? ["# 한글 Windows(CP949) 인코딩으로 감지되어 encoding을 지정했습니다"]
       : []),
@@ -64,10 +64,10 @@ export function buildPandasLoadCode(name: string, encoding: string | null): stri
   ].join("\n");
 }
 
-/** 시트 사용 범위를 xl()로 읽는 로드 블록 코드 */
+/** 시트 사용 범위를 sheet()로 읽는 로드 블록 코드 */
 export function buildXlLoadCode(ref: string): string {
   return [
-    `df = xl("${ref}", headers=True)`,
+    `df = sheet("${ref}", headers=True)`,
     "",
     'print("행·열:", df.shape)',
     'print("열 이름:", df.columns.tolist())',

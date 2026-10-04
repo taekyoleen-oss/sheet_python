@@ -77,7 +77,7 @@ test("G3: 실행→spill→재실행 교체→undo 복원→오류→객체 카�
   await expect(textarea).toBeFocused();
 
   // 1) describe() → 큰 spill (부트 포함이라 폴링 여유)
-  await textarea.fill('df = xl("A1:B4", headers=True)\ndf.describe()');
+  await textarea.fill('df = sheet("A1:B4", headers=True)\ndf.describe()');
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
     .poll(() => srcCellCount(page), { timeout: 150_000, intervals: [1000] })
@@ -92,7 +92,7 @@ test("G3: 실행→spill→재실행 교체→undo 복원→오류→객체 카�
   expect(deepCell.src).toBeTruthy();
 
   // 2) mean() → 작은 spill로 교체, 이전 spill 완전 제거, 무관 셀 유지
-  await textarea.fill('df = xl("A1:B4", headers=True)\ndf.mean(numeric_only=True)');
+  await textarea.fill('df = sheet("A1:B4", headers=True)\ndf.mean(numeric_only=True)');
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
     .poll(() => cellAt(page, "8:3"), { timeout: 60_000, intervals: [500] })
@@ -127,7 +127,7 @@ test("G3: 실행→spill→재실행 교체→undo 복원→오류→객체 카�
     const st = (window as any).__pygridStore.getState();
     st.setBlockOutputMode(st.workbook.pyBlocks[0].id, "object");
   });
-  await textarea.fill('xl("A1:B4", headers=True)');
+  await textarea.fill('sheet("A1:B4", headers=True)');
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
     .poll(async () => String((await cellAt(page, "0:3"))?.v ?? ""), {

@@ -404,7 +404,7 @@ export default function SnippetInsertDialog() {
                           ? dfVars
                           : p.kind === "column"
                             ? columnOptions
-                            : [xlRefForSelection(refBlock?.sheetId) ?? 'xl("A1")'];
+                            : [xlRefForSelection(refBlock?.sheetId) ?? 'sheet("A1")'];
                       const current = subs[p.token] ?? p.token;
                       return (
                         <span key={p.token} className="flex items-center gap-1">

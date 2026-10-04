@@ -84,11 +84,11 @@ describe.each(ALL.map((s) => [s.id, s] as const))("%s", (_id, s) => {
     expect(text.startsWith(`# ▸ ${s.label}\n# ${s.desc}\n`)).toBe(true);
   });
 
-  test("자리표시자 {{range}}는 xl() 호출 전체로 치환된다", () => {
-    // 앱은 {{range}}를 `xl("A1:K535", headers=True)` 호출 '전체'로 바꾼다(xl-ref.ts).
-    // 따옴표 안에 쓰면 xl("xl(...)")가 되어 깨지므로 금지한다.
+  test("자리표시자 {{range}}는 sheet() 호출 전체로 치환된다", () => {
+    // 앱은 {{range}}를 `sheet("A1:K535", headers=True)` 호출 '전체'로 바꾼다(xl-ref.ts).
+    // 따옴표 안에 쓰면 sheet("sheet(...)")가 되어 깨지므로 금지한다.
     expect(s.code, `${s.id}: {{range}}를 따옴표 안에 쓰면 안 된다`).not.toContain('"{{range}}"');
-    const subbed = substitutePlaceholders(s.code, { "{{range}}": 'xl("wage!A1:K535", headers=True)' });
+    const subbed = substitutePlaceholders(s.code, { "{{range}}": 'sheet("wage!A1:K535", headers=True)' });
     expect(subbed).not.toContain("{{range}}");
   });
 });

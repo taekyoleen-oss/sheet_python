@@ -1,5 +1,5 @@
 // 부록 K — 데이터 내장 샘플 워크북 정합성.
-// 스키마·xl() 참조 범위·문서 구조·파일 크기를 파일 단위로 검증한다(실행은 e2e).
+// 스키마·sheet() 참조 범위·문서 구조·파일 크기를 파일 단위로 검증한다(실행은 e2e).
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -17,8 +17,8 @@ const FILES = readdirSync(DIR).filter((f) => f.endsWith(".pygrid.json"));
 /** 각 워크북 상한 2MB (부록 K.3 — 초과하면 행 샘플링이 필요하다) */
 const MAX_BYTES = 2 * 1024 * 1024;
 
-/** 코드에서 xl("참조", headers=…) 호출 추출 */
-const XL_CALL = /\bxl\(\s*"([^"]+)"\s*(?:,\s*headers\s*=\s*(True|False)\s*)?\)/g;
+/** 코드에서 sheet("참조", headers=…) 호출 추출 */
+const XL_CALL = /\bsheet\(\s*"([^"]+)"\s*(?:,\s*headers\s*=\s*(True|False)\s*)?\)/g;
 
 /** 값이 있는 셀의 최대 행·열 (사용 범위) */
 function usedRange(sheet: Sheet): { maxR: number; maxC: number } {
@@ -55,7 +55,7 @@ describe.each(FILES)("%s", (file) => {
     }
   });
 
-  test("xl() 참조가 실제 시트 사용 범위 안이고 헤더 행은 문자열", () => {
+  test("sheet() 참조가 실제 시트 사용 범위 안이고 헤더 행은 문자열", () => {
     let refCount = 0;
     for (const b of wb.pyBlocks) {
       if (b.kind === "markdown") continue;

@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 // R5: 데이터 불러오기 — 샘플 xlsx가 시트 + 워커 FS에 이중 착지하고,
-// xl() 로드 블록과 pandas(pd.read_excel) 로드 블록이 모두 실행돼 spill되는지.
+// sheet() 로드 블록과 pandas(pd.read_excel) 로드 블록이 모두 실행돼 spill되는지.
 
 async function waitForApp(page: Page) {
   await page.waitForFunction(
@@ -63,7 +63,7 @@ test("샘플 policy.xlsx 기본 옵션 → 새 시트 + xl 로드 블록 → 실
   await waitForApp(page);
 
   await openSampleDialog(page, /policy/);
-  // 기본 옵션: 시트 ✓ · 워커 FS ✓ · xl() 참조
+  // 기본 옵션: 시트 ✓ · 워커 FS ✓ · sheet() 참조
   const dialog = page.getByRole("dialog", { name: "데이터 불러오기" });
   await dialog.getByRole("button", { name: "불러오기" }).click();
 
@@ -80,7 +80,7 @@ test("샘플 policy.xlsx 기본 옵션 → 새 시트 + xl 로드 블록 → 실
   const code = await page.evaluate(
     () => (window as any).__pygridStore.getState().workbook.pyBlocks[0]?.code ?? "",
   );
-  expect(code).toContain('df = xl("policy!A1:');
+  expect(code).toContain('df = sheet("policy!A1:');
   expect(code).toContain("headers=True");
 
   // 상태 바의 데이터 파일 칩

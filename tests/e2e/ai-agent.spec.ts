@@ -221,13 +221,13 @@ test("블록 ✦ 오류 원인 알려줘 → 채팅 자동 전송(traceback 첨�
     toolUse("list_blocks", {}, "블록을 확인할게요."),
     {
       content: [
-        { type: "text", text: "df가 정의되지 않아서 납니다. 먼저 xl()로 읽어야 합니다." },
+        { type: "text", text: "df가 정의되지 않아서 납니다. 먼저 sheet()로 읽어야 합니다." },
         {
           type: "tool_use",
           id: "tu-fix",
           name: "propose_block",
           input: {
-            code: 'df = xl("A1:B4", headers=True)\ndf.sum()',
+            code: 'df = sheet("A1:B4", headers=True)\ndf.sum()',
             title: "합계 (수정)",
             targetBlockId: blockId,
           },
@@ -257,7 +257,7 @@ test("블록 ✦ 오류 원인 알려줘 → 채팅 자동 전송(traceback 첨�
   // ── 코드 제안 카드 → [현재 블록에 적용] (교체, 자동 실행 없음)
   const card = panel.getByTestId("block-proposal");
   await expect(card).toBeVisible();
-  await expect(card).toContainText('df = xl("A1:B4", headers=True)');
+  await expect(card).toContainText('df = sheet("A1:B4", headers=True)');
   await expect(card).toContainText("합계 (수정)");
   await expect(card).toContainText("Sheet1!D1 · 합계"); // 대상 블록 앵커 칩
   await card.getByRole("button", { name: "현재 블록에 적용" }).click();
@@ -266,7 +266,7 @@ test("블록 ✦ 오류 원인 알려줘 → 채팅 자동 전송(traceback 첨�
   const block = await page.evaluate(
     () => (window as any).__pygridStore.getState().workbook.pyBlocks[0],
   );
-  expect(block.code).toBe('df = xl("A1:B4", headers=True)\ndf.sum()');
+  expect(block.code).toBe('df = sheet("A1:B4", headers=True)\ndf.sum()');
   expect((await page.evaluate(
     () => (window as any).__pygridStore.getState().workbook.pyBlocks.length,
   ))).toBe(1); // 새 블록을 만들지 않고 대상 블록을 교체

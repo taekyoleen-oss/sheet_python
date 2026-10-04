@@ -161,7 +161,7 @@ test("셀 서식: 굵게+크기 적용 → 저장/열기 왕복 보존 → 굵�
   await expect.poll(() => cellSt("0:0")).toEqual({ fs: 16 });
 });
 
-test("실행 참조 표시: xl(\"A1:B3\") 실행 → 범위 기록·tint → 토글 끔 (실런타임)", async ({
+test("실행 참조 표시: sheet(\"A1:B3\") 실행 → 범위 기록·tint → 토글 끔 (실런타임)", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -174,7 +174,7 @@ test("실행 참조 표시: xl(\"A1:B3\") 실행 → 범위 기록·tint → 토
     for (let r = 0; r < 3; r++)
       for (let c = 0; c < 2; c++) st.setCellValue(sid, r, c, { v: r + c, t: "n" });
     const id = st.addPyBlock(sid, { r: 0, c: 4 });
-    st.setBlockCode(id, 'xl("A1:B3").sum().sum()');
+    st.setBlockCode(id, 'sheet("A1:B3").sum().sum()');
     return id;
   });
 

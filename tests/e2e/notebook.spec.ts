@@ -111,7 +111,7 @@ test("노트북 셀: 앵커 재지정 → 출력 선택 → 마크다운·목차
   await page.keyboard.press("Control+Shift+P");
   const editor = page.getByLabel("Python 코드");
   await expect(editor).toBeFocused();
-  await editor.fill('df = xl("A1:B6", headers=True)\nwide = df.assign(c=df["a"] * 2)\ndf');
+  await editor.fill('df = sheet("A1:B6", headers=True)\nwide = df.assign(c=df["a"] * 2)\ndf');
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
     .poll(() => srcCount(page), { timeout: 150_000, intervals: [1000] })
@@ -298,7 +298,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   await page.keyboard.press("Control+Shift+P");
   const editor = page.getByLabel("Python 코드");
   await editor.fill(
-    'df = xl("A1:B6", headers=True)\ntotal = int(df["a"].sum())\navg = float(df["b"].mean())\ndf',
+    'df = sheet("A1:B6", headers=True)\ntotal = int(df["a"].sum())\navg = float(df["b"].mean())\ndf',
   );
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
@@ -309,7 +309,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
 
   // 출력 #2 추가 → 기본은 블록 옆 빈 셀, 여기서는 G8으로 지정
   const codeCard = page.locator('[data-block-kind="code"]');
-  await codeCard.getByRole("button", { name: "출력 추가" }).click();
+  await codeCard.getByRole("button", { name: "시트에 추가" }).click();
   expect(
     await page.evaluate(
       () => (window as any).__pygridStore.getState().workbook.pyBlocks[0].outputs.length,
@@ -358,7 +358,7 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
 
   // 진단 탭: 출력마다 상태·오류가 따로 보인다. avg를 지워 출력 #2만 실패시킨다
   await editor.fill(
-    'df = xl("A1:B6", headers=True)\ntotal = int(df["a"].sum())\nif "avg" in globals():\n    del avg\ndf',
+    'df = sheet("A1:B6", headers=True)\ntotal = int(df["a"].sum())\nif "avg" in globals():\n    del avg\ndf',
   );
   await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
@@ -381,5 +381,9 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
   await codeCard.getByRole("button", { name: "출력 2 삭제" }).click();
   expect(await cellAt(page, "7:6")).toBeNull();
   expect(await outputCellCount(page, 0)).toBe(12);
-  await expect(codeCard.getByRole("button", { name: "출력 1 삭제" })).toBeDisabled();
+  // 마지막 출력의 ×는 '시트에서 빼기' — 누르면 셀이 지워지고 Python 결과로만 본다
+  await expect(codeCard.getByRole("button", { name: "출력 1 삭제" })).toHaveAttribute(
+    "title",
+    /시트에서 빼기/,
+  );
 });

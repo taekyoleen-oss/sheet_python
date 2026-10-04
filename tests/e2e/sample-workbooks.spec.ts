@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 블록 기본은 '시트에 추가 안 함' — 이 스펙은 샘플·블록 결과를 시트 셀에서 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 K·M·N — 데이터 내장 예제 워크북(통계분석 · 위험률 산출).
 // 헤더 샘플 워크북 메뉴에서 열고 전체 실행 → 모든 코드 블록 status 'ok'(실런타임).
 // scipy·statsmodels 첫 로드가 있어 테스트당 5분 상한.

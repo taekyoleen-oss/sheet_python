@@ -92,7 +92,7 @@ export default function StatusBar({ saveStatus }: { saveStatus: SaveStatus }) {
           void saveSettings({ showRefs: !showRefs });
         }}
         className={showRefs ? "font-medium text-[#1F6E64]" : "hover:text-foreground"}
-        title="블록이 마지막 성공 실행에서 읽은 xl() 참조 범위를 그리드에 표시"
+        title="블록이 마지막 성공 실행에서 읽은 sheet() 참조 범위를 그리드에 표시"
         aria-pressed={showRefs}
       >
         참조 표시 {showRefs ? "켬" : "끔"}

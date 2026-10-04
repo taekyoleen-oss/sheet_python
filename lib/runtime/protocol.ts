@@ -9,11 +9,11 @@ import type {
   OutputSelection,
 } from "@/types/workbook";
 
-/** xl() 참조 범위의 2D 스냅샷. 단일 셀 참조도 1×1 2D로 전달하고, 스칼라 변환은 xl.py가 참조 형태를 보고 결정한다 */
+/** sheet() 참조 범위의 2D 스냅샷. 단일 셀 참조도 1×1 2D로 전달하고, 스칼라 변환은 xl.py가 참조 형태를 보고 결정한다 */
 export interface RangeSnapshot {
   values: (string | number | boolean | null)[][];
   types: CellType[][];
-  /** 참조가 단일 셀(`A1`)이면 true → xl()이 스칼라 반환 */
+  /** 참조가 단일 셀(`A1`)이면 true → sheet()이 스칼라 반환 */
   scalar: boolean;
 }
 

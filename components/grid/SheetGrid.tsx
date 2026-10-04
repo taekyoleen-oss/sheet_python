@@ -35,7 +35,7 @@ import { formatCellDisplay } from "@/lib/grid/format";
 import { cellFromInput, FORMULA_ERROR_KO, isFormulaError } from "@/lib/grid/formula";
 import { useWorkbookStore } from "@/lib/grid/model";
 import { dataEdge, type Dir } from "@/lib/grid/navigate";
-import { outputsOf, srcBlockId } from "@/lib/grid/outputs";
+import { onSheet, outputsOf, srcBlockId } from "@/lib/grid/outputs";
 import { applyAnchorPick } from "@/lib/grid/run-block";
 import {
   cellKey,
@@ -158,8 +158,9 @@ export default function SheetGrid() {
         if (b.sheetId === sheet.id) map.set(cellKey(b.anchor.r, b.anchor.c), { block: b });
         continue;
       }
+      // 시트에 추가하지 않은 블록·출력은 셀을 선점하지 않는다 (배지·#BUSY! 없음)
       for (const o of outputsOf(b)) {
-        if ((o.sheetId ?? b.sheetId) !== sheet.id) continue;
+        if (!onSheet(b, o) || (o.sheetId ?? b.sheetId) !== sheet.id) continue;
         map.set(cellKey(o.anchor.r, o.anchor.c), { block: b, output: o });
       }
     }
@@ -183,7 +184,7 @@ export default function SheetGrid() {
     return out;
   }, [pyBlocks, sheet.id]);
 
-  // 부록 J.3: 성공 실행이 읽은 xl() 참조 범위 (teal tint, 토글 가능)
+  // 부록 J.3: 성공 실행이 읽은 sheet() 참조 범위 (teal tint, 토글 가능)
   const executedRefs = useWorkbookStore((s) => s.executedRefs);
   const showRefs = useWorkbookStore((s) => s.showRefs);
   const refRanges = useMemo(() => {
@@ -428,7 +429,7 @@ export default function SheetGrid() {
         ctx.restore();
       }
 
-      // 편집기 xl() 커서 → 점선 하이라이트 (§4.8)
+      // 편집기 sheet() 커서 → 점선 하이라이트 (§4.8)
       if (editorHover && inRange(editorHover, row, col)) {
         ctx.save();
         ctx.strokeStyle = PRIMARY;

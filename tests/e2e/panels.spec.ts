@@ -136,9 +136,9 @@ test("참조 삽입 바 + 진단 탭 스모크", async ({ page }) => {
   await page.evaluate(() => {
     (window as any).__pygridStore.getState().setSelection({ r0: 0, c0: 0, r1: 2, c1: 1 });
   });
-  const insertBar = page.getByRole("button", { name: /^xl\(.*삽입$/ });
+  const insertBar = page.getByRole("button", { name: /^sheet\(.*삽입$/ });
   await expect(insertBar).toBeVisible();
-  await expect(insertBar).toContainText('xl("A1:B3", headers=True)');
+  await expect(insertBar).toContainText('sheet("A1:B3", headers=True)');
   await insertBar.click();
 
   // 500ms 디바운스 커밋 후 스토어 코드에 반영
@@ -150,7 +150,7 @@ test("참조 삽입 바 + 진단 탭 스모크", async ({ page }) => {
         ),
       { timeout: 5_000 },
     )
-    .toContain('xl("A1:B3", headers=True)');
+    .toContain('sheet("A1:B3", headers=True)');
 
   // 코드 커밋 → 자동 계산(§2.3.3)이 큐잉된다. 이 실행(부트 포함)이 끝나 spill이 생길 때까지
   // 기다린 뒤 오류 단계로 — 안 기다리면 큐의 성공 실행이 오류 결과를 덮는다.

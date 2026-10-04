@@ -759,7 +759,7 @@
    "outputMode": "values",
    "includeIndex": "auto",
    "title": "상품별 손해율",
-   "code": "df = xl(\"A1:D41\", headers=True)\ng = df.groupby(\"상품\").agg(\n    보험료=(\"보험료\", \"sum\"), 손해액=(\"손해액\", \"sum\"))\ng[\"손해율\"] = (g[\"손해액\"] / g[\"보험료\"]).round(3)\ng"
+   "code": "df = sheet(\"A1:D41\", headers=True)\ng = df.groupby(\"상품\").agg(\n    보험료=(\"보험료\", \"sum\"), 손해액=(\"손해액\", \"sum\"))\ng[\"손해율\"] = (g[\"손해액\"] / g[\"보험료\"]).round(3)\ng"
   }
  ],
  "initScript": "",
