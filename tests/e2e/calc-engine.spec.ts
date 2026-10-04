@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // G4: 의존성 재계산(입력 셀 수정 → A·B 순 재실행) + 순환 참조 오류
 // G5: 무한 루프 중단(KeyboardInterrupt) 후 런타임 유지(변수 보존, 재부트 없음)
 

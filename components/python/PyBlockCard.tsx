@@ -50,6 +50,8 @@ import {
 import { AiAssist } from "@/components/python/AiAssist";
 import CodeEditor from "@/components/python/CodeEditor";
 import ModelResultDialog from "@/components/python/ModelResultDialog";
+import { PreviewImage, PreviewTable } from "@/components/panels/OutputPreviewTab";
+import type { PreviewPayload } from "@/lib/runtime/protocol";
 import { formatA1 } from "@/lib/grid/a1";
 import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { codeTitle } from "@/lib/grid/code-sections";
@@ -397,7 +399,61 @@ function OutputList({ block }: { block: PyBlock }) {
   );
 }
 
-/** 앵커 셀로 이동 (헤더 주소 버튼 · ⋮ 메뉴 공용) */
+/** 노트북식 실행 결과 — 코드 바로 아래에 stdout/stderr·오류·마지막 값(표·이미지·repr). 숨기기 가능 */
+function CellResult({ block }: { block: PyBlock }) {
+  const [hidden, setHidden] = useState(false);
+  const last = block.last;
+  if (!last) return null;
+  const preview = last.preview as PreviewPayload | undefined;
+  const isError = last.status === "error";
+  return (
+    <div data-testid="cell-result" className="border-t bg-card">
+      <button
+        onClick={() => setHidden((v) => !v)}
+        aria-expanded={!hidden}
+        className="flex w-full items-center gap-1 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {hidden ? <CaretRight className="size-3" /> : <CaretDown className="size-3" />}
+        {hidden ? "실행 결과 보기" : "실행 결과 숨기기"}
+        <span className="ml-auto font-mono">{last.durationMs}ms</span>
+      </button>
+      {!hidden && (
+        <div className="max-h-80 overflow-auto pb-1">
+          {last.stdout && (
+            <pre className="whitespace-pre-wrap px-3 py-1 font-mono text-xs leading-5">
+              {last.stdout}
+            </pre>
+          )}
+          {last.stderr && (
+            <pre className="whitespace-pre-wrap bg-destructive/5 px-3 py-1 font-mono text-xs leading-5 text-destructive">
+              {last.stderr}
+            </pre>
+          )}
+          {isError ? (
+            <div className="px-3 py-1 text-xs text-destructive">
+              {last.summaryKo && <p>{last.summaryKo}</p>}
+              {last.traceback && (
+                <pre className="mt-1 overflow-x-auto font-mono text-[11px] leading-4">
+                  {last.traceback}
+                </pre>
+              )}
+            </div>
+          ) : last.imageBlobId ? (
+            <PreviewImage blobId={last.imageBlobId} />
+          ) : preview?.kind === "table" ? (
+            <PreviewTable preview={preview} />
+          ) : preview?.kind === "repr" && preview.repr ? (
+            <pre className="overflow-x-auto px-3 py-1 font-mono text-xs leading-5">
+              {preview.repr}
+            </pre>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 해당 셀(앵커)로 이동 (헤더 주소 버튼 · ⋮ 메뉴 공용) */
 function goToAnchor(block: PyBlock): void {
   const st = store();
   st.setActiveSheet(block.sheetId);
@@ -484,7 +540,9 @@ function MoreMenu({
             <DropdownMenuShortcut>제목에서 Ctrl+Enter</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => goToAnchor(block)}>앵커 셀로 이동</DropdownMenuItem>
+        {block.toSheet !== false && (
+          <DropdownMenuItem onClick={() => goToAnchor(block)}>해당 셀로 이동</DropdownMenuItem>
+        )}
         <DropdownMenuItem
           onClick={() => store().setBlockCollapsed(block.id, !collapsed)}
         >
@@ -559,6 +617,7 @@ export default function PyBlockCard({
     (s) => s.workbook.sheets.find((sh) => sh.id === block.sheetId)?.name ?? "?",
   );
   const collapsed = !!block.collapsed;
+  const toSheet = !isMarkdown && block.toSheet !== false;
   const cardRef = useRef<HTMLDivElement>(null);
   const mdRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -786,6 +845,26 @@ export default function PyBlockCard({
         ) : (
           <>
             {statusBadge(block, running)}
+            <button
+              onClick={() => {
+                store().setBlockToSheet(block.id, !toSheet);
+                if (!toSheet) notifyWorkbookEdit([], [block.id]); // 켜면 재실행(수동은 dirty)해 셀에 쓴다
+              }}
+              aria-pressed={toSheet}
+              title={
+                toSheet
+                  ? "시트로 보내는 중 — 누르면 Python 결과로만 봅니다(시트의 결과 셀은 지워짐)"
+                  : "결과를 시트 셀로 보냅니다 — 보낼 위치·대상을 아래에서 고릅니다"
+              }
+              className={cn(
+                "shrink-0 rounded border px-1.5 py-0.5 text-[11px]",
+                toSheet
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+            >
+              시트로 보내기
+            </button>
             {dirty && !running && (
               <span
                 className="size-1.5 shrink-0 rounded-full bg-warning"
@@ -844,13 +923,15 @@ export default function PyBlockCard({
         </Button>
         <MoreMenu block={block} onRun={run} onNote={isMarkdown ? undefined : openNote} />
       </div>
-        <button
-          onClick={() => goToAnchor(block)}
-          className="shrink-0 font-mono text-xs text-foreground/80 hover:text-primary"
-          title="앵커 셀로 이동"
-        >
-          {anchorLabel}
-        </button>
+        {toSheet && (
+          <button
+            onClick={() => goToAnchor(block)}
+            className="shrink-0 font-mono text-xs text-foreground/80 hover:text-primary"
+            title="해당 셀로 이동"
+          >
+            {anchorLabel}
+          </button>
+        )}
       </div>
 
       {/* 본문 — 왼쪽 원형 실행 레일 + 내용 */}
@@ -1003,7 +1084,7 @@ export default function PyBlockCard({
                     )}
                   </div>
                 )}
-                <OutputList block={block} />
+                {toSheet && <OutputList block={block} />}
                 {narrow ? (
                   <>
                     <button
@@ -1043,11 +1124,7 @@ export default function PyBlockCard({
                     placeholder={'df = xl("A1:C10", headers=True)\ndf.describe()'}
                   />
                 )}
-                {block.last?.status === "error" && block.last.summaryKo && (
-                  <div className="border-t px-2 py-1 text-xs text-destructive">
-                    {block.last.summaryKo}
-                  </div>
-                )}
+                <CellResult block={block} />
                 <AiAssist block={block} />
               </>
             )}

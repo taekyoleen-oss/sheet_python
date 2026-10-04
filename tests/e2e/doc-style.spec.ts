@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 J: 마크다운 서식 툴바·이미지 내장 / 셀 서식(굵게·크기) / 실행 참조 표시
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

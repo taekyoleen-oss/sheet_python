@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // M8: 키보드 전용 블록 추가→실행 흐름(마우스 0회) + 800×600 탭 전환 UI
 
 async function waitForApp(page: Page) {

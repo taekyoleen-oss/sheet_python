@@ -98,6 +98,8 @@
   }
   html {
     @apply font-sans;
+    /* 기본 화면 배율 90% — rem 기반 글자·여백이 함께 줄어든다 (그리드·코드 편집기는 px로 따로 맞춤) */
+    font-size: 90%;
   }
   body {
     @apply bg-background text-foreground;

@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // G3 핵심: 블록 실행 → spill → 재실행 시 이전 spill 교체 → Ctrl+Z 복원 → 오류 → 객체 카드
 // 한 테스트로 묶어 런타임 부트(첫 CDN 로드 ~15초+)를 1회만 치른다.
 

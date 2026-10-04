@@ -20,7 +20,7 @@ const toCell = (v: string | number | boolean | null): Cell | null => {
   return { v, t: "s" };
 };
 
-function PreviewTable({ preview }: { preview: Extract<PreviewPayload, { kind: "table" }> }) {
+export function PreviewTable({ preview }: { preview: Extract<PreviewPayload, { kind: "table" }> }) {
   const [sort, setSort] = useState<{ col: number; dir: 1 | -1 } | null>(null);
 
   const rows = useMemo(() => {
@@ -98,7 +98,7 @@ function PreviewTable({ preview }: { preview: Extract<PreviewPayload, { kind: "t
   );
 }
 
-function PreviewImage({ blobId }: { blobId: string }) {
+export function PreviewImage({ blobId }: { blobId: string }) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {

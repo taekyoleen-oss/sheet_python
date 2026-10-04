@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 O.5: 모델 결과 → 시트 다이얼로그 — 실런타임(scikit-learn)으로 모델 적합 →
 // 모델별 속성 표(현재 값·코드) 확인 → 절편을 셀에 놓기 + 코드를 새 블록으로 보내기
 

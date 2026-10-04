@@ -1,7 +1,7 @@
 // 부록 P: 작업 폴더 동기화 — 워크북의 workDir를 런타임에 "코드"(os.makedirs + os.chdir)로 적용한다.
 // 런타임 FS는 메모리라 재부트하면 초기화되므로, 부트 완료마다 같은 코드를 다시 실행한다.
 
-import { HOME_DIR, workDirCode } from "@/lib/grid/files";
+import { DEFAULT_WORK_DIR, workDirCode } from "@/lib/grid/files";
 import { useWorkbookStore } from "@/lib/grid/model";
 import type { RuntimeClient } from "./client";
 
@@ -18,9 +18,9 @@ export function startWorkDirSync(client: RuntimeClient): () => void {
   const sync = (force: boolean) => {
     const want = useWorkbookStore.getState().workbook.workDir;
     if (!force && want === applied) return;
-    if (want === undefined && applied === undefined) return; // 기본(홈) 그대로
+    if (want === undefined && applied === undefined) return; // 기본(다운로드)은 워커가 부트 중에 만든다
     applied = want;
-    void applyWorkDir(client, want ?? HOME_DIR).catch(() => undefined);
+    void applyWorkDir(client, want ?? DEFAULT_WORK_DIR).catch(() => undefined);
   };
   const offStatus = client.on("status", (s) => {
     const booted = s === "ready" && (prev === "loading" || prev === "rebooting" || prev === "idle");

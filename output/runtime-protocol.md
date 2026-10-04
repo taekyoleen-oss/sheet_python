@@ -71,7 +71,7 @@
 | `stdout` / `stderr` | id, chunk | 라인 단위 스트리밍. id = 진행 중인 run/repl id, **유휴(부트·리셋 출력)는 id 0** |
 | `analyzed` | id, refs | `xl()` 문자열 리터럴 인수를 그대로(중복 제거·순서 유지) |
 | `analyzeError` | id, message | `xl() 인수는 문자열 리터럴이어야 합니다` / `xl() headers 인수는 True/False 리터럴이어야 합니다` / `구문 오류: …` |
-| `result` | id, blockId + RunPayload | run 결과(아래 "run 변환 결과" 참조). 실패: errorType(예외 클래스명)·message·traceback·durationMs |
+| `result` | id, blockId + RunPayload | run 결과(아래 "run 변환 결과" 참조). 실패: errorType(예외 클래스명)·message·traceback·durationMs. stdout/stderr = 그 run이 스트리밍한 출력 전체 사본(카드 아래 결과 표시용) |
 | `replResult` | id, repr, stdout:'', stderr:'', traceback? | repr = 마지막 표현식의 `repr()`, None이면 null. stdout/stderr 필드는 빈 문자열(이미 스트리밍됨) |
 | `dirListing` | id, cwd, path, entries: DirEntry[] | `{name, dir, size}` — 폴더 먼저·이름순. path는 워커가 절대 경로로 정규화 |
 | `variables` | id, vars: VariableInfo[] | name·type·shape(2D만)·summary(repr ≤80자). 모듈·함수·클래스·`_` 이름 제외. 부록 O.5: 2D 표는 `columns`(≤500), 적합된 statsmodels 결과·scikit-learn 추정기(비지도 포함)는 `model: ModelInfo`(kind·formula·intervals·predict·proba·featureNames·members[{group,label,expr,code,preview,shape}] — 모델에 실제로 있는 항목만, expr=출력 식, code=라이브러리 원래 코드) |

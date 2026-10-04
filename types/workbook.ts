@@ -118,6 +118,11 @@ export interface PyBlock {
   note?: string;
   /** 카드 접기 상태 (마크다운·코드·결과 전부 숨김) */
   collapsed?: boolean;
+  /**
+   * 결과를 시트 셀에 쓸지. false면 카드 아래 Python 결과로만 본다(새 블록 기본).
+   * undefined는 이 필드 이전 워크북 — 시트로 보낸다(기존 동작 유지).
+   */
+  toSheet?: boolean;
   /** 출력 선택 (변수·열·행) — 레거시 단일 출력. 로드 시 outputs[0]로 정규화된다 */
   output?: OutputSelection;
   /**

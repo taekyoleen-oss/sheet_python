@@ -24,6 +24,17 @@ const at = (sid: string, r: number, c: number): SheetRange => ({
   c1: c,
 });
 
+/** 시트로 보내기를 켠 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
+const sheetBlock = (
+  store: ReturnType<typeof createWorkbookStore>,
+  sheetId: string,
+  anchor: { r: number; c: number },
+): string => {
+  const id = store.getState().addPyBlock(sheetId, anchor)!;
+  store.getState().setBlockToSheet(id, true);
+  return id;
+};
+
 describe("recalcAfter — 연쇄·부분 재계산", () => {
   it("연쇄 재계산: A1 ← B1 ← C1이 의존 순서로 갱신된다", () => {
     const { wb, sid } = wbWith({
@@ -118,7 +129,7 @@ describe("스토어 통합 — 한 트랜잭션·spill 연동·통지", () => {
     try {
       // D1 수식이 A1(블록 spill 위치)을 참조
       store.getState().setCellValue(sid, 0, 3, { v: null, t: "n", fx: "=SUM(A1:A3)" });
-      const blockId = store.getState().addPyBlock(sid, { r: 0, c: 0 })!;
+      const blockId = sheetBlock(store, sid, { r: 0, c: 0 });
       store.getState().applyBlockResult(blockId, [[{ v: 5, t: "n" }], [{ v: 6, t: "n" }]]);
       expect(store.getState().workbook.sheets[0].cells["0:3"].v).toBe(11);
 

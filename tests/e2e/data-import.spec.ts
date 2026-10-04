@@ -1,6 +1,14 @@
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // R5: 데이터 불러오기 — 샘플 xlsx가 시트 + 워커 FS에 이중 착지하고,
 // xl() 로드 블록과 pandas(pd.read_excel) 로드 블록이 모두 실행돼 spill되는지.
 

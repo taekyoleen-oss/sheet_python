@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 L: 워크북 에이전트 채팅 — 도구 호출(read_range) 로그·근거 하이라이트 → 셀 제안 [적용] → Ctrl+Z,
 // 블록 ✦ "오류 원인 알려줘" → 채팅 자동 전송(traceback 첨부) → 코드 제안 [현재 블록에 적용].
 // 실제 Anthropic API는 호출하지 않는다 (page.route 모킹).

@@ -1,6 +1,14 @@
 import { writeFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // G6: matplotlib 한글 이미지 카드 + 미리보기 탭 렌더 + 값 모드 거부
 // + 참조 삽입 바 · 진단 탭 스모크
 
@@ -56,7 +64,7 @@ test("G6: matplotlib 한글 이미지 → 카드·미리보기·스크린샷 →
   // 출력 미리보기 탭 → 이미지 렌더 (선택 블록 없으면 최근 실행 블록)
   await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click(); // 부록 P.7: 진단·미리보기는 속성 창 탭
   await page.getByRole("tab", { name: "출력 미리보기" }).click();
-  const img = page.getByTestId("preview-image");
+  const img = page.getByTestId("props-bottom").getByTestId("preview-image");
   await expect(img).toBeVisible({ timeout: 15_000 });
   await expect(img).toHaveAttribute("src", /^blob:/);
 
@@ -70,7 +78,7 @@ test("G6: matplotlib 한글 이미지 → 카드·미리보기·스크린샷 →
     .toBeGreaterThan(0);
   await img.evaluate((el) => (el as HTMLImageElement).decode());
   const pngB64 = await page.evaluate(async () => {
-    const el = document.querySelector('[data-testid="preview-image"]') as HTMLImageElement;
+    const el = document.querySelector('[data-testid="props-bottom"] [data-testid="preview-image"]') as HTMLImageElement;
     const buf = await (await fetch(el.src)).arrayBuffer();
     const bytes = new Uint8Array(buf);
     let s = "";

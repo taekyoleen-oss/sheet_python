@@ -25,7 +25,7 @@ test("속성 창: 작업 폴더 지정 → 파일 불러오기 → 변수 → �
   await page.getByRole("button", { name: "속성 창 열기 (변수·파일)" }).click();
   const panel = page.getByTestId("properties-panel");
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("props-cwd")).toHaveText("/home/pyodide", { timeout: 150_000 });
+  await expect(panel.getByTestId("props-cwd")).toHaveText("/Users/tklee/Downloads", { timeout: 150_000 });
 
   // 고정 ↔ 겹침
   const aside = page.getByRole("complementary", { name: "속성 창" });
@@ -41,8 +41,8 @@ test("속성 창: 작업 폴더 지정 → 파일 불러오기 → 변수 → �
   await panel.getByLabel("새 폴더 이름").press("Enter");
   await panel.locator('[data-entry="data"]').click();
   await panel.getByRole("button", { name: "이 폴더를 작업 폴더로" }).click();
-  await expect(panel.getByTestId("props-cwd")).toHaveText("/home/pyodide/data");
-  expect((await st(page)).workDir).toBe("/home/pyodide/data");
+  await expect(panel.getByTestId("props-cwd")).toHaveText("/Users/tklee/Downloads/data");
+  expect((await st(page)).workDir).toBe("/Users/tklee/Downloads/data");
 
   // 작업 폴더에 CSV 올리기
   await panel.locator('input[type="file"]').setInputFiles({

@@ -34,7 +34,9 @@ const getState = () => useWorkbookStore.getState();
 
 /** 블록이 점유한 출력 영역 — 값 모드는 마지막 spill, 그 밖(객체·미실행)은 앵커 1×1 (부록 D.1) */
 const areasOf = (b: PyBlock): OutputArea[] =>
-  outputsOf(b).map((o) => {
+  b.toSheet === false
+    ? [] // 시트로 보내지 않는 블록은 셀을 차지하지 않는다
+    : outputsOf(b).map((o) => {
     const rg =
       o.mode === "values" && o.last?.status === "ok" && o.last.spillRange
         ? o.last.spillRange
@@ -47,17 +49,21 @@ export function makeView(): WorkbookView {
   const wb = getState().workbook;
   return {
     blocks: wb.pyBlocks.map(
-      ({ id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs }) => ({
-        id,
-        sheetId,
-        anchor,
-        code,
-        outputMode,
-        includeIndex,
-        output,
-        kind,
-        outputs,
-      }),
+      ({ id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs, toSheet }) =>
+        toSheet === false
+          ? // 시트로 보내지 않는 블록은 객체 모드로 실행 — 셀 대신 미리보기(표·이미지·repr)를 받는다
+            {
+              id,
+              sheetId,
+              anchor,
+              code,
+              outputMode: "object" as const,
+              includeIndex,
+              output,
+              kind,
+              outputs: outputs?.map((o) => ({ ...o, mode: "object" as const })),
+            }
+          : { id, sheetId, anchor, code, outputMode, includeIndex, output, kind, outputs },
     ),
     sheetOrder: wb.sheets.map((s) => s.id),
     spills: new Map(
@@ -165,7 +171,7 @@ export const calcHost: CalcHost = {
         block.anchor,
         [cells.length, cells[0].length],
       );
-      if (conflict) {
+      if (conflict && block.toSheet !== false) {
         st.applyBlockResult(blockId, [[{ v: "#SPILL!", t: "e" }]], {
           last: { ...base, status: "spill", summaryKo: conflict },
         });
@@ -175,8 +181,10 @@ export const calcHost: CalcHost = {
         last: { ...base, spillRange: spill },
         clearPrevious: true,
       });
-      st.setFlash({ sheetId: block.sheetId, range: spill });
-      setTimeout(() => getState().setFlash(null), 400);
+      if (block.toSheet !== false) {
+        st.setFlash({ sheetId: block.sheetId, range: spill });
+        setTimeout(() => getState().setFlash(null), 400);
+      }
       return;
     }
 
@@ -314,7 +322,7 @@ export const calcHost: CalcHost = {
             binding.anchor,
             [cells.length, cells[0].length],
           );
-          if (conflict) {
+          if (conflict && block.toSheet !== false) {
             applies.push({
               outputId,
               cells: [[{ v: "#SPILL!", t: "e" }]],
@@ -352,7 +360,7 @@ export const calcHost: CalcHost = {
           now.setExecutedRefs(blockId, null);
         }
       });
-      if (flash) {
+      if (flash && block.toSheet !== false) {
         st.setFlash(flash);
         setTimeout(() => getState().setFlash(null), 400);
       }

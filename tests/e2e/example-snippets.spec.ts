@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 N — 예제 코드를 '불러와서 단계별로 작업하는' 흐름을 실제 데이터로 끝까지 돌린다.
 //
 // 시나리오: 임금 회귀 워크북을 열고 → 그리드에서 데이터 범위를 선택 → 코드 삽입 팝업에서

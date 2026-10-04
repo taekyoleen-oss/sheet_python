@@ -1,8 +1,12 @@
 // 부록 P: 속성 창 탐색기의 순수 도우미 — 경로 계산, 작업 폴더 지정 코드, 파일 불러오기 코드.
 // 모든 동작은 "코드"로 남는다: 작업 폴더는 os.chdir, 불러오기는 pd.read_* 블록.
 
-/** 사용자 파일의 기본 위치 (Pyodide 홈) */
-export const HOME_DIR = "/home/pyodide";
+/** 사용자 폴더 — Windows의 C:/Users/tklee처럼 보이게 한다. 탐색기는 이보다 위로 가지 않는다 */
+export const HOME_DIR = "/Users/tklee";
+/** Windows 기본 폴더 (부트마다 만든다) */
+export const WIN_FOLDERS = ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"];
+/** 작업 폴더 기본값 — 다운로드 */
+export const DEFAULT_WORK_DIR = `${HOME_DIR}/Downloads`;
 
 /** "/a/b/../c/" → "/a/c" (절대 경로 정규화) */
 export function normPath(path: string): string {
@@ -19,13 +23,15 @@ export const joinPath = (dir: string, name: string): string => normPath(`${dir}/
 
 export const parentPath = (path: string): string => normPath(`${path}/..`);
 
-/** 경로 → 빵부스러기 [{name, path}] (루트 "/" 포함) */
-export function breadcrumbs(path: string): { name: string; path: string }[] {
+/** 경로 → 빵부스러기 [{name, path}] (루트 "/" 포함). root 안쪽이면 root부터 */
+export function breadcrumbs(path: string, root = "/"): { name: string; path: string }[] {
   const parts = normPath(path).split("/").filter(Boolean);
-  return [
+  const all = [
     { name: "/", path: "/" },
     ...parts.map((name, i) => ({ name, path: "/" + parts.slice(0, i + 1).join("/") })),
   ];
+  const i = all.findIndex((b) => b.path === normPath(root));
+  return i > 0 ? all.slice(i) : all;
 }
 
 /** 파이썬 문자열 리터럴 (JSON 문자열은 그대로 유효한 Python 문자열이다) */
@@ -34,6 +40,11 @@ const py = (s: string): string => JSON.stringify(s);
 /** 작업 폴더 지정 코드 — 런타임 재부트(메모리 FS 초기화) 뒤에도 같은 코드로 다시 만든다 */
 export const workDirCode = (dir: string): string =>
   `import os\nos.makedirs(${py(dir)}, exist_ok=True)\nos.chdir(${py(dir)})`;
+
+/** 부트 코드 — Windows 기본 폴더를 만들고 작업 폴더로 이동 */
+export const bootDirsCode = (dir: string): string =>
+  `import os\nfor _d in ${JSON.stringify(WIN_FOLDERS)}:\n    os.makedirs(${py(HOME_DIR)} + "/" + _d, exist_ok=True)\ndel _d\n` +
+  workDirCode(dir);
 
 /** 작업 폴더 기준 상대 경로 (안쪽이면 상대, 아니면 절대) */
 export function relPath(path: string, cwd: string): string {

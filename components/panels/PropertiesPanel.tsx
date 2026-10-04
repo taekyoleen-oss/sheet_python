@@ -42,6 +42,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import {
   breadcrumbs,
   fmtSize,
+  DEFAULT_WORK_DIR,
   HOME_DIR,
   joinPath,
   loadCode,
@@ -240,12 +241,12 @@ function loadIntoBlock(filePath: string, cwd: string) {
   const made = insertSnippetAsBlock(ref, "below", `데이터 불러오기: ${name}`, res.code);
   if (!made) return;
   st.setFocusBlock(made.id);
-  toast.success(`불러오기 블록을 추가했습니다 — ▶ 실행하면 변수 ${res.varName}가 만들어지고 미리보기가 셀에 펼쳐집니다`);
+  toast.success(`불러오기 블록을 추가했습니다 — ▶ 실행하면 변수 ${res.varName}가 만들어지고 미리보기가 블록 아래에 보입니다`);
 }
 
 function FilesSection({ client, active }: { client: RuntimeClient; active: boolean }) {
   const workDir = useWorkbookStore((s) => s.workbook.workDir);
-  const [cwd, setCwd] = useState<string>(workDir ?? HOME_DIR);
+  const [cwd, setCwd] = useState<string>(workDir ?? DEFAULT_WORK_DIR);
   const [path, setPath] = useState<string | null>(null); // null = 작업 폴더
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -278,7 +279,7 @@ function FilesSection({ client, active }: { client: RuntimeClient; active: boole
   const here = path ?? cwd;
 
   const setAsWorkDir = async (dir: string) => {
-    store().setWorkDir(dir === HOME_DIR ? null : dir);
+    store().setWorkDir(dir === DEFAULT_WORK_DIR ? null : dir);
     const err = await applyWorkDir(client, dir);
     if (err) toast.error(`작업 폴더 지정 실패: ${err}`);
     else toast.success(`작업 폴더: ${dir} — 코드의 상대 경로가 이 폴더 기준이 됩니다`);
@@ -315,10 +316,10 @@ function FilesSection({ client, active }: { client: RuntimeClient; active: boole
     <div className="flex h-full flex-col">
       <div className="flex h-8 shrink-0 items-center gap-0.5 border-b bg-muted/40 px-2">
         <span className="mr-1 text-xs font-semibold">파일</span>
-        <IconBtn label="홈 폴더" onClick={() => void list(HOME_DIR)}>
+        <IconBtn label="사용자 폴더 (tklee)" onClick={() => void list(HOME_DIR)}>
           <House className="size-3.5" />
         </IconBtn>
-        <IconBtn label="상위 폴더" onClick={() => void list(parentPath(here))} disabled={here === "/"}>
+        <IconBtn label="상위 폴더" onClick={() => void list(parentPath(here))} disabled={here === "/" || here === HOME_DIR}>
           <ArrowUp className="size-3.5" />
         </IconBtn>
         <IconBtn label="작업 폴더로 이동" onClick={() => void list(null)}>
@@ -357,7 +358,7 @@ function FilesSection({ client, active }: { client: RuntimeClient; active: boole
           </IconBtn>
         </div>
         <div className="flex flex-wrap items-center gap-0.5 font-mono">
-          {breadcrumbs(here).map((b, i, arr) => (
+          {breadcrumbs(here, HOME_DIR).map((b, i, arr) => (
             <span key={b.path} className="flex items-center">
               <button
                 className={cn("rounded px-0.5 hover:bg-accent", i === arr.length - 1 && "font-semibold")}

@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+
+// 새 블록 기본은 '시트로 보내지 않음' — 이 스펙은 spill을 검증하므로 켜고 시작한다
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault = true;
+  });
+});
+
 // 부록 F: 코드 삽입 팝업(그룹→스니펫→미리보기→삽입 위치) · 목차 서브 항목 ·
 // 카드 헤더 재배치·접기 · 제목 폴백. Python 실행 없이 스토어·DOM만 검증한다
 // (수동 계산 모드 — 코드 편집이 자동 실행을 유발하지 않게).

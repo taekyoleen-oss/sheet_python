@@ -73,7 +73,7 @@ const placeholderHighlighter = ViewPlugin.fromClass(
 );
 
 const editorTheme = EditorView.theme({
-  "&": { fontSize: "12px", backgroundColor: "var(--code-bg)" },
+  "&": { fontSize: "11px", backgroundColor: "var(--code-bg)" },
   ".cm-content": { fontFamily: "var(--font-jetbrains), monospace", padding: "6px 8px" },
   ".cm-gutters": { display: "none" },
   ".cm-xlref": { color: "#4A90C2", backgroundColor: "#EAF3FA", borderRadius: "2px" },

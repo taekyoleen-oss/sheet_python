@@ -17,6 +17,7 @@ import bootstrapPy from "../lib/runtime/py/bootstrap.py";
 import convertPy from "../lib/runtime/py/convert.py";
 import modelOutPy from "../lib/runtime/py/model_out.py";
 import xlPy from "../lib/runtime/py/xl.py";
+import { bootDirsCode, DEFAULT_WORK_DIR } from "../lib/grid/files";
 
 // tsconfig lib이 dom이므로 webworker 전역을 좁은 타입으로 캐스팅해 쓴다
 // Next는 청크 끝에 `_N_E = __webpack_exports__` (output.library 대입)를 붙인다.
@@ -38,6 +39,8 @@ let pyodide: PyodideInterface | null = null;
 let initScript = "";
 /** 실행 중인 run/repl id. 유휴(부트·리셋 스크립트 출력)는 0 */
 let currentRunId = 0;
+/** 진행 중인 run의 stdout/stderr 사본 — result에 실어 카드 아래 결과로 보인다(스트리밍은 그대로) */
+const runIo = { out: "", err: "" };
 /** boot 완료 전에 setInterruptBuffer가 오면 보관했다가 적용 */
 let pendingInterrupt: Uint8Array | null = null;
 
@@ -137,8 +140,18 @@ async function boot(msg: Extract<MainToWorker, { t: "boot" }>): Promise<void> {
     post({ t: "progress", pct: 20, label: "런타임 초기화" });
     const py = await mod.loadPyodide({ indexURL: msg.indexURL });
 
-    py.setStdout({ batched: (chunk) => post({ t: "stdout", id: currentRunId, chunk }) });
-    py.setStderr({ batched: (chunk) => post({ t: "stderr", id: currentRunId, chunk }) });
+    py.setStdout({
+      batched: (chunk) => {
+        if (currentRunId !== 0) runIo.out += chunk + "\n";
+        post({ t: "stdout", id: currentRunId, chunk });
+      },
+    });
+    py.setStderr({
+      batched: (chunk) => {
+        if (currentRunId !== 0) runIo.err += chunk + "\n";
+        post({ t: "stderr", id: currentRunId, chunk });
+      },
+    });
 
     post({ t: "progress", pct: 45, label: "패키지 로드(numpy·pandas)" });
     if (msg.packages.length > 0) await py.loadPackage(msg.packages);
@@ -160,6 +173,8 @@ async function boot(msg: Extract<MainToWorker, { t: "boot" }>): Promise<void> {
     py.runPython(xlPy);
     py.runPython(convertPy);
     py.runPython(modelOutPy);
+    // Windows 기본 폴더 + 기본 작업 폴더(다운로드) — ready 전에 옮겨야 캐시 파일 복원이 여기에 떨어진다
+    py.runPython(bootDirsCode(DEFAULT_WORK_DIR));
 
     post({ t: "progress", pct: 90, label: "초기화 스크립트" });
     pyodide = py;
@@ -283,8 +298,8 @@ async function handleRun(msg: Extract<MainToWorker, { t: "run" }>): Promise<void
       errorType,
       message,
       traceback,
-      stdout: "",
-      stderr: "",
+      stdout: runIo.out,
+      stderr: runIo.err,
       durationMs: Math.round(performance.now() - t0),
     });
   const py = pyodide;
@@ -293,6 +308,8 @@ async function handleRun(msg: Extract<MainToWorker, { t: "run" }>): Promise<void
     return;
   }
   currentRunId = msg.id;
+  runIo.out = "";
+  runIo.err = "";
   try {
     await loadImports(py, msg.code);
     // xl() 스냅샷 주입 → 실행+변환 → finally에서 캐시 비움 (계약: runtime-protocol.md)
@@ -323,8 +340,8 @@ async function handleRun(msg: Extract<MainToWorker, { t: "run" }>): Promise<void
           ok: true,
           kind: first && first.ok ? first.kind : "object",
           outputs,
-          stdout: "",
-          stderr: "",
+          stdout: runIo.out,
+          stderr: runIo.err,
           durationMs: Math.round(performance.now() - t0),
         },
         transfer.length > 0 ? transfer : undefined,
@@ -357,8 +374,8 @@ async function handleRun(msg: Extract<MainToWorker, { t: "run" }>): Promise<void
         cells: r.cells,
         preview: r.preview,
         imagePng,
-        stdout: "",
-        stderr: "",
+        stdout: runIo.out,
+        stderr: runIo.err,
         durationMs,
       },
       imagePng ? [imagePng] : undefined,

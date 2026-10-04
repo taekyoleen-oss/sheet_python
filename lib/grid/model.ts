@@ -415,6 +415,8 @@ export interface WorkbookState {
   setBlockNote: (id: string, note: string | null) => void;
   setBlockTitle: (id: string, title: string) => void;
   setBlockCollapsed: (id: string, collapsed: boolean) => void;
+  /** 시트로 보내기 켜기/끄기 — 끄면 그 블록의 spill 셀을 같은 트랜잭션에서 지운다 */
+  setBlockToSheet: (id: string, on: boolean) => void;
   /** 패널 헤더 '모두 접기/펼치기' */
   setAllCollapsed: (collapsed: boolean) => void;
   /**
@@ -943,6 +945,10 @@ export const createWorkbookStore = () => {
                 code: "",
                 outputMode: "values",
                 includeIndex: "auto",
+                // 새 블록은 Python 결과로만 본다 — 카드의 '시트로 보내기'로 켠다.
+                // __pygridToSheetDefault: spill을 검증하는 e2e 전용 스위치 (__pygridStore와 같은 테스트 훅)
+                toSheet:
+                  (globalThis as { __pygridToSheetDefault?: boolean }).__pygridToSheetDefault === true,
                 // 마크다운 블록은 실행되지 않고 셀에 아무것도 쓰지 않는다 (앵커 = 위치·목차 대상)
                 ...(kind === "markdown" ? { kind, markdown: "" } : {}),
               };
@@ -1226,6 +1232,18 @@ export const createWorkbookStore = () => {
               if (block) block.collapsed = collapsed || undefined;
             }),
 
+          setBlockToSheet: (id, on) =>
+            set((state) => {
+              const block = state.workbook.pyBlocks.find((b) => b.id === id);
+              if (!block) return;
+              block.toSheet = on;
+              if (on) return;
+              for (const o of block.outputs ?? []) if (o.last?.spillRange) delete o.last.spillRange;
+              syncLegacy(block);
+              const boxes = clearSpillCells(state.workbook, id);
+              if (boxes.length > 0) recalcFormulas(state.workbook, boxes);
+            }),
+
           setAllCollapsed: (collapsed) =>
             set((state) => {
               for (const b of state.workbook.pyBlocks) b.collapsed = collapsed || undefined;
@@ -1246,7 +1264,17 @@ export const createWorkbookStore = () => {
               const block = state.workbook.pyBlocks.find((b) => b.id === blockId);
               if (!block) return;
               const edited: SheetRange[] = []; // spill 반영도 수식 재계산 대상 (부록 I.2)
-              for (const res of results) {
+              // 시트로 보내기 꺼짐 — 셀은 쓰지 않고 결과(last)만 남긴다
+              const toSheet = block.toSheet !== false;
+              for (const raw of results) {
+                const res: OutputApply = toSheet
+                  ? raw
+                  : {
+                      outputId: raw.outputId,
+                      cells: [],
+                      clearPrevious: true,
+                      last: raw.last && { ...raw.last, spillRange: undefined },
+                    };
                 const binding = block.outputs?.find((o) => o.id === res.outputId);
                 if (!binding) continue;
                 const sheet = state.workbook.sheets.find(

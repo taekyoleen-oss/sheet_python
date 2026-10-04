@@ -152,7 +152,7 @@ export function TocList() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => goToBlock(entry.blockId)}>
-                    앵커 셀로 이동
+                    해당 셀로 이동
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => renameBlock(entry.blockId)}>
                     이름 바꾸기

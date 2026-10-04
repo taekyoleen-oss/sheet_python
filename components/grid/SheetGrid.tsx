@@ -75,7 +75,7 @@ const DEFAULT_COL_WIDTH = 88;
 /** 부록 P.6: 작게 보기(보조 화면) / 기본 크기 — 전체 화면에서는 항상 기본 크기 */
 const DENSITY = {
   compact: { colWidth: 72, rowHeight: 24, headerHeight: 26, font: 12, headerFont: "600 11px", pad: 2 },
-  normal: { colWidth: DEFAULT_COL_WIDTH, rowHeight: 34, headerHeight: 36, font: 13, headerFont: "600 12px", pad: 3 },
+  normal: { colWidth: DEFAULT_COL_WIDTH, rowHeight: 34, headerHeight: 36, font: 12, headerFont: "600 11px", pad: 3 },
 } as const;
 const PRIMARY = "#4A90C2";
 const WARNING = "#D9A441";

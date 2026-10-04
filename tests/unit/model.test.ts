@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { createWorkbook, createWorkbookStore } from "@/lib/grid/model";
 import type { PyBlock, Workbook } from "@/types/workbook";
 
+/** 시트로 보내기를 켠 코드 블록 (새 블록 기본은 Python 결과로만 보기) */
+const sheetBlock = (
+  store: ReturnType<typeof createWorkbookStore>,
+  sheetId: string,
+  anchor: { r: number; c: number },
+): string => {
+  const id = store.getState().addPyBlock(sheetId, anchor)!;
+  store.getState().setBlockToSheet(id, true);
+  return id;
+};
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const fresh = () => {
@@ -182,7 +193,7 @@ describe("블록 앵커 재지정·접기·출력 선택", () => {
   /** D1 앵커 + 3행 spill(D1:D3)이 기록된 블록 */
   const seed = () => {
     const { store, sheetId } = fresh();
-    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 3 })!;
+    const id = sheetBlock(store, sheetId, { r: 0, c: 3 });
     store.getState().applyBlockResult(
       id,
       [[{ v: 1, t: "n" }], [{ v: 2, t: "n" }], [{ v: 3, t: "n" }]],
@@ -223,7 +234,7 @@ describe("블록 앵커 재지정·접기·출력 선택", () => {
 
   it("충돌 거부: 다른 블록 앵커·다른 블록 결과·비어 있지 않은 셀", () => {
     const { store, sheetId, id } = seed();
-    const other = store.getState().addPyBlock(sheetId, { r: 9, c: 9 })!;
+    const other = sheetBlock(store, sheetId, { r: 9, c: 9 });
     store.getState().applyBlockResult(other, [[{ v: 7, t: "n" }], [{ v: 8, t: "n" }]], {
       clearPrevious: true,
     });
@@ -240,7 +251,7 @@ describe("블록 앵커 재지정·접기·출력 선택", () => {
 
   it("접기 상태는 저장되지만 undo 이력을 만들지 않는다", async () => {
     const { store, sheetId } = fresh();
-    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const id = sheetBlock(store, sheetId, { r: 0, c: 0 });
     await sleep(350);
     const depth = store.temporal.getState().pastStates.length;
 
@@ -272,7 +283,7 @@ describe("블록 앵커 재지정·접기·출력 선택", () => {
 
   it("setBlockOutput: 병합하고 undefined는 해제", () => {
     const { store, sheetId } = fresh();
-    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const id = sheetBlock(store, sheetId, { r: 0, c: 0 });
     const out = () => store.getState().workbook.pyBlocks[0].output;
 
     store.getState().setBlockOutput(id, { variable: "df" });
@@ -299,10 +310,28 @@ describe("다중 출력 (부록 D.1)", () => {
   /** A1 블록 + 출력 1개(A1) — 정규화로 outputs가 자동 생성된다 */
   const seed = () => {
     const { store, sheetId } = fresh();
-    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const id = sheetBlock(store, sheetId, { r: 0, c: 0 });
     const block = () => store.getState().workbook.pyBlocks.find((b) => b.id === id)!;
     return { store, sheetId, id, block };
   };
+
+  it("새 블록은 시트로 보내지 않는다 — 결과만 남고 셀은 비어 있다, 끄면 spill 제거", () => {
+    const { store, sheetId } = fresh();
+    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    store.getState().applyBlockResult(id, [[{ v: 5, t: "n" }]], {
+      last: { status: "ok", stdout: "hi", stderr: "", durationMs: 1, ranAt: "", spillRange: { r0: 0, c0: 0, r1: 0, c1: 0 } },
+    });
+    expect(cells(store)["0:0"]).toBeUndefined();
+    const b = () => store.getState().workbook.pyBlocks[0];
+    expect(b().last?.stdout).toBe("hi");
+    expect(b().last?.spillRange).toBeUndefined();
+
+    store.getState().setBlockToSheet(id, true);
+    store.getState().applyBlockResult(id, [[{ v: 5, t: "n" }]], { clearPrevious: true });
+    expect(cells(store)["0:0"]?.v).toBe(5);
+    store.getState().setBlockToSheet(id, false);
+    expect(cells(store)["0:0"]).toBeUndefined();
+  });
 
   it("addPyBlock은 outputs 1개로 시작하고 레거시 필드와 동기화된다", () => {
     const { block } = seed();
@@ -482,8 +511,8 @@ describe("블록 자리 교환 (↑↓)", () => {
 
   it("계산 순서 이웃과 앵커 교환 + 양쪽 spill 제거·dirty, undo 한 단계", async () => {
     const { store, sheetId } = fresh();
-    const a = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!; // A1 (첫째)
-    const b = store.getState().addPyBlock(sheetId, { r: 5, c: 0 })!; // A6 (둘째)
+    const a = sheetBlock(store, sheetId, { r: 0, c: 0 }); // A1 (첫째)
+    const b = sheetBlock(store, sheetId, { r: 5, c: 0 }); // A6 (둘째)
     store.getState().applyBlockResult(a, [[{ v: 1, t: "n" }, { v: 2, t: "n" }]], {
       last: ok({ r0: 0, c0: 0, r1: 0, c1: 1 }),
       clearPrevious: true,
@@ -517,8 +546,8 @@ describe("블록 자리 교환 (↑↓)", () => {
 
   it("경계에서는 교환하지 않는다", () => {
     const { store, sheetId } = fresh();
-    const a = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
-    const b = store.getState().addPyBlock(sheetId, { r: 5, c: 0 })!;
+    const a = sheetBlock(store, sheetId, { r: 0, c: 0 });
+    const b = sheetBlock(store, sheetId, { r: 5, c: 0 });
     expect(store.getState().swapBlockOrder(a, "up")).toBeNull(); // 첫 블록 ↑
     expect(store.getState().swapBlockOrder(b, "down")).toBeNull(); // 마지막 블록 ↓
     expect(store.getState().workbook.pyBlocks.map((x) => x.anchor)).toEqual([
@@ -532,8 +561,8 @@ describe("블록 자리 교환 (↑↓)", () => {
     const { store, sheetId } = fresh();
     store.getState().addSheet();
     const sheet2 = store.getState().workbook.sheets[1].id;
-    const a = store.getState().addPyBlock(sheetId, { r: 9, c: 0 })!; // Sheet1!A10
-    const b = store.getState().addPyBlock(sheet2, { r: 0, c: 0 })!; // Sheet2!A1 (시트 순으로 뒤)
+    const a = sheetBlock(store, sheetId, { r: 9, c: 0 }); // Sheet1!A10
+    const b = sheetBlock(store, sheet2, { r: 0, c: 0 }); // Sheet2!A1 (시트 순으로 뒤)
     expect(store.getState().swapBlockOrder(a, "down")).toBe(b);
     const byId = (id: string) => store.getState().workbook.pyBlocks.find((x) => x.id === id)!;
     expect(byId(a)).toMatchObject({ sheetId: sheet2, anchor: { r: 0, c: 0 } });
