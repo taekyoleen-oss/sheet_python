@@ -46,13 +46,30 @@ test("셀 아래 실행 결과 → 숨기기 → 시트에 추가하면 spill, �
   await result.getByRole("button", { name: "실행 결과 보기" }).click();
   await expect(result).toContainText("안녕");
 
-  // 시트에 추가 → 출력 설정·해당 셀로 이동이 나타나고 자동 재실행으로 spill. 다시 누르면 출력이 하나 더
+  // 시트에 추가 → 셀이 정해지지 않은 출력('셀 선택') + 위치 지정 모드. 셀을 고르기 전엔 아무것도 쓰지 않는다
   await page.getByRole("button", { name: "시트에 추가" }).click();
   await expect(page.getByTestId("output-list")).toBeVisible();
-  await expect(page.getByTitle("해당 셀로 이동")).toBeVisible();
+  await expect(page.getByRole("button", { name: "출력 1 위치" })).toHaveText("셀 선택");
+  await expect(page.getByText("결과를 놓을 셀을 클릭하세요")).toBeVisible();
+  await expect(page.getByTitle("해당 셀로 이동")).toHaveCount(0);
+  expect(await srcCount(page)).toBe(0);
+
+  // 셀(C2)을 고르고 실행하면 그 자리에 놓인다
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    const st = (window as any).__pygridStore.getState();
+    const b = st.workbook.pyBlocks[0];
+    st.setOutputAnchor(b.id, b.outputs[0].id, { r: 1, c: 2 });
+  });
+  await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect.poll(() => srcCount(page), { timeout: 60_000 }).toBeGreaterThan(0);
+  await expect(page.getByTitle("해당 셀로 이동")).toBeVisible();
+
+  // 다시 누르면 위치 미정 출력이 하나 더
   await page.getByRole("button", { name: "시트에 추가" }).click();
   await expect(page.locator("[data-output-id]")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "출력 2 위치" })).toHaveText("셀 선택");
+  await page.keyboard.press("Escape");
 
   // 출력을 모두 지우면 시트에서 빠진다
   await page.getByRole("button", { name: "출력 2 삭제" }).click();

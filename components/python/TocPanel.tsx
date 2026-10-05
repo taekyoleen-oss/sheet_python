@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { editorRegistry } from "@/components/python/CodeEditor";
 import { blockSubEntries, buildToc, type SubEntry, type TocEntry } from "@/lib/grid/markdown";
+import { onSheet, outputsOf } from "@/lib/grid/outputs";
 import { useWorkbookStore } from "@/lib/grid/model";
 import { blocksInOrder, runBlocks } from "@/lib/grid/run-block";
 import { cn } from "@/lib/utils";
@@ -38,13 +39,13 @@ function goToBlock(blockId: string): void {
   const block = st.workbook.pyBlocks.find((b) => b.id === blockId);
   if (!block) return;
   st.setBlockCollapsed(blockId, false);
-  st.setActiveSheet(block.sheetId);
-  st.setSelection({
-    r0: block.anchor.r,
-    c0: block.anchor.c,
-    r1: block.anchor.r,
-    c1: block.anchor.c,
-  });
+  // 시트에 놓인 결과가 있을 때만 그리드도 그 셀로 — Python 결과로만 보는 블록은 셀이 없다
+  const placed = outputsOf(block).find((o) => onSheet(block, o));
+  if (placed) {
+    const { r, c } = placed.anchor;
+    st.setActiveSheet(placed.sheetId ?? block.sheetId);
+    st.setSelection({ r0: r, c0: c, r1: r, c1: c });
+  }
   st.setSelectedBlock(blockId);
   requestAnimationFrame(() => store().setFocusBlock(blockId));
 }

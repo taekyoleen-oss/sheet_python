@@ -24,7 +24,8 @@ export const bindingTag = (blockId: string, o: OutputBinding): string =>
   o.id ? srcTag(blockId, o.id) : blockId;
 
 /** 이 출력을 시트 셀에 쓰는가 — 블록이 '시트에 추가'된 상태이고 출력 자체가 꺼지지 않았을 때만 */
-export const onSheet = (b: PyBlock, o: OutputBinding): boolean => b.sheetOut === true && !o.off;
+export const onSheet = (b: PyBlock, o: OutputBinding): boolean =>
+  b.sheetOut === true && !o.off && !o.unplaced;
 
 /** 코드 블록의 출력 목록. 마크다운은 빈 배열, 정규화 전 블록은 레거시 필드로 합성 */
 export function outputsOf(b: PyBlock): OutputBinding[] {
@@ -61,6 +62,7 @@ export function resetSheetOutputs(b: PyBlock): void {
   if (!b.outputs || b.outputs.length === 0) return;
   b.outputs = [b.outputs[0]];
   delete b.outputs[0].off;
+  delete b.outputs[0].unplaced;
   if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
 }
 

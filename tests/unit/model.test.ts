@@ -212,17 +212,19 @@ describe("블록 앵커 재지정·접기·출력 선택", () => {
     return { store, sheetId, id };
   };
 
-  it("앵커 이동: 이전 spill 제거 + 새 앵커 + dirty, undo 한 단계", async () => {
+  it("앵커 이동: 결과 영역이 한 묶음으로 옮겨진다(옛 자리는 비움) + dirty, undo 한 단계", async () => {
     const { store, id } = seed();
     await sleep(350);
     expect(Object.keys(cells(store))).toHaveLength(3);
     const depth = store.temporal.getState().pastStates.length;
 
     expect(store.getState().setBlockAnchor(id, { r: 5, c: 5 })).toBeNull();
-    expect(Object.keys(cells(store))).toHaveLength(0); // 옛 spill 제거
+    // 옛 자리(D1:D3)는 비고, 같은 모양으로 F6:F8에 놓인다
+    expect(Object.keys(cells(store)).sort()).toEqual(["5:5", "6:5", "7:5"]);
+    expect(cells(store)["7:5"].v).toBe(3);
     const block = store.getState().workbook.pyBlocks[0];
     expect(block.anchor).toEqual({ r: 5, c: 5 });
-    expect(block.last?.spillRange).toBeUndefined();
+    expect(block.last?.spillRange).toEqual({ r0: 5, c0: 5, r1: 7, c1: 5 });
     expect(store.getState().dirtyBlocks[id]).toBe(true);
 
     await sleep(350);
@@ -424,14 +426,16 @@ describe("다중 출력 (부록 D.1)", () => {
     expect(cells(store)["0:0"].src).toBe(`${id}:${outputId}`);
   });
 
-  it("addOutput: 블록 옆 빈 셀에 추가, 각 출력이 독립된 영역에 기록된다", () => {
+  it("addOutput: 셀이 정해지지 않은 출력 → 셀을 고르면 독립된 영역에 기록된다", () => {
     const { store, id, block } = seed();
     const out1 = block().outputs![0].id;
     const out2 = store.getState().addOutput(id)!;
     expect(block().outputs).toHaveLength(2);
+    expect(block().outputs![1].unplaced).toBe(true); // 미리 셀을 정하지 않는다
+    expect(store.getState().setOutputAnchor(id, out2, { r: 0, c: 2 })).toBeNull();
+    expect(block().outputs![1].unplaced).toBeUndefined();
     const anchor2 = block().outputs![1].anchor;
-    expect(anchor2.r).toBe(0);
-    expect(anchor2.c).toBeGreaterThan(0); // 블록 앵커와 겹치지 않는다
+    expect(anchor2).toEqual({ r: 0, c: 2 });
 
     store.getState().applyOutputResults(id, [
       {
@@ -476,6 +480,7 @@ describe("다중 출력 (부록 D.1)", () => {
     const { store, id, block } = seed();
     const out1 = block().outputs![0].id;
     const out2 = store.getState().addOutput(id)!;
+    store.getState().setOutputAnchor(id, out2, { r: 0, c: 2 });
     const c2 = block().outputs![1].anchor.c;
     store.getState().applyOutputResults(id, [
       { outputId: out1, cells: [[{ v: 1, t: "n" }]], clearPrevious: true, last: okResult() },
@@ -492,10 +497,11 @@ describe("다중 출력 (부록 D.1)", () => {
     expect(block().outputs).toHaveLength(1);
   });
 
-  it("setOutputAnchor: 그 출력의 옛 spill만 제거하고 이동, 충돌은 거부", () => {
+  it("setOutputAnchor: 그 출력의 결과만 묶음으로 이동(옛 자리 비움), 충돌은 거부", () => {
     const { store, id, block } = seed();
     const out1 = block().outputs![0].id;
     const out2 = store.getState().addOutput(id)!;
+    store.getState().setOutputAnchor(id, out2, { r: 0, c: 2 });
     const c2 = block().outputs![1].anchor.c;
     store.getState().applyOutputResults(id, [
       {
@@ -514,7 +520,9 @@ describe("다중 출력 (부록 D.1)", () => {
 
     expect(store.getState().setOutputAnchor(id, out2, { r: 8, c: 8 })).toBeNull();
     expect(block().outputs![1].anchor).toEqual({ r: 8, c: 8 });
-    expect(cells(store)[`0:${c2}`]).toBeUndefined(); // 옮긴 출력의 옛 셀만 제거
+    expect(cells(store)[`0:${c2}`]).toBeUndefined(); // 옮긴 출력의 옛 셀은 비고
+    expect(cells(store)["8:8"]?.v).toBe(2); // 결과는 새 자리로 함께 옮겨진다
+    expect(block().outputs![1].last?.spillRange).toEqual({ r0: 8, c0: 8, r1: 8, c1: 8 });
     expect(cells(store)["0:0"]?.v).toBe(1); // 다른 출력은 그대로
     expect(block().anchor).toEqual({ r: 0, c: 0 }); // 블록 앵커(=outputs[0])는 그대로
 

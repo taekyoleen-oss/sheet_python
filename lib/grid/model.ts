@@ -989,6 +989,7 @@ export const createWorkbookStore = () => {
             if (!sheet) return "시트를 찾을 수 없습니다";
             const currentSheetId = binding.sheetId ?? block.sheetId;
             if (
+              !binding.unplaced &&
               targetSheetId === currentSheetId &&
               binding.anchor.r === target.r &&
               binding.anchor.c === target.c
@@ -996,7 +997,12 @@ export const createWorkbookStore = () => {
               return null; // 제자리
             }
             const tag = srcTag(blockId, outputId);
-            const conflict = checkSpillConflict(sheet, st.workbook.pyBlocks, tag, target, [1, 1]);
+            // 이미 펼쳐진 결과는 한 묶음으로 옮긴다 — 새 자리에 같은 크기가 들어가는지 검사
+            const prev = onSheet(block, binding) ? binding.last?.spillRange : undefined;
+            const shape: [number, number] = prev
+              ? [prev.r1 - prev.r0 + 1, prev.c1 - prev.c0 + 1]
+              : [1, 1];
+            const conflict = checkSpillConflict(sheet, st.workbook.pyBlocks, tag, target, shape);
             if (conflict) return conflict;
             const cell = sheet.cells[cellKey(target.r, target.c)];
             // 앵커 셀은 출력 소유라 checkSpillConflict가 봐주지만, 재지정은 빈 셀에만 허용한다
@@ -1007,10 +1013,39 @@ export const createWorkbookStore = () => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
               const o = b?.outputs?.find((x) => x.id === outputId);
               if (!b || !o) return;
+              // 옛 결과 셀을 상대 위치째 떼어 두었다가 새 앵커에 다시 놓는다 (옛 자리는 비워진다)
+              const fromSheet = state.workbook.sheets.find((s) => s.id === currentSheetId);
+              const moving: { dr: number; dc: number; cell: Cell }[] = [];
+              if (fromSheet && prev) {
+                for (const key of Object.keys(fromSheet.cells)) {
+                  if (fromSheet.cells[key].src !== tag) continue;
+                  const { r, c } = parseCellKey(key);
+                  moving.push({ dr: r - o.anchor.r, dc: c - o.anchor.c, cell: fromSheet.cells[key] });
+                }
+              }
               const cleared = clearSpillCells(state.workbook, blockId, outputId);
-              if (cleared.length > 0) recalcFormulas(state.workbook, cleared);
-              if (o.last?.spillRange) delete o.last.spillRange; // 옛 위치의 spill 테두리 제거
+              if (o.last?.spillRange) delete o.last.spillRange;
               o.anchor = { r: target.r, c: target.c };
+              delete o.unplaced;
+              const toSheet = state.workbook.sheets.find((s) => s.id === targetSheetId);
+              if (toSheet && prev && moving.length > 0) {
+                for (const m of moving) {
+                  const r = target.r + m.dr;
+                  const c = target.c + m.dc;
+                  toSheet.cells[cellKey(r, c)] = { ...m.cell, src: tag };
+                  if (r >= toSheet.rowCount) toSheet.rowCount = r + 1;
+                  if (c >= toSheet.colCount) toSheet.colCount = c + 1;
+                }
+                const moved = {
+                  r0: target.r + (prev.r0 - binding.anchor.r),
+                  c0: target.c + (prev.c0 - binding.anchor.c),
+                  r1: target.r + (prev.r1 - binding.anchor.r),
+                  c1: target.c + (prev.c1 - binding.anchor.c),
+                };
+                if (o.last) o.last.spillRange = moved;
+                cleared.push({ sheetId: toSheet.id, ...moved });
+              }
+              if (cleared.length > 0) recalcFormulas(state.workbook, cleared);
               if (b.outputs![0].id === outputId) {
                 // 블록 시트가 따라 움직인다 — 다른 출력은 원래 시트에 남긴다
                 if (targetSheetId !== b.sheetId) {
@@ -1111,32 +1146,30 @@ export const createWorkbookStore = () => {
             const st = get();
             const block = st.workbook.pyBlocks.find((b) => b.id === blockId);
             if (!block || block.kind === "markdown") return null;
-            const sheet = st.workbook.sheets.find((s) => s.id === block.sheetId);
-            if (!sheet) return null;
-            // '시트에 추가' — 처음 누르면 기존 출력(앵커)을 켜고, 이후로는 하나씩 추가한다
+            // '시트에 추가' — 셀이 정해지지 않은 출력 하나를 만든다(처음엔 기존 첫 출력을 재사용).
+            // 위치를 고르기 전까지 아무 셀도 쓰지 않고, 고르면(setOutputAnchor) 그때 실행·반영된다
             if (block.sheetOut !== true) {
               set((state) => {
                 const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
-                if (!b) return;
+                const o = b?.outputs?.[0];
+                if (!b || !o) return;
                 b.sheetOut = true;
-                if (b.outputs?.[0]) delete b.outputs[0].off;
-                state.dirtyBlocks[blockId] = true;
+                delete o.off;
+                o.unplaced = true;
               });
               return block.outputs?.[0]?.id ?? null;
             }
-            const r = block.anchor.r;
-            const c = freeOutputCol(sheet, st.workbook.pyBlocks, block);
             const id = newId();
             set((state) => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
               if (!b) return;
               (b.outputs ??= []).push({
                 id,
-                anchor: { r, c },
+                anchor: { r: b.anchor.r, c: b.anchor.c }, // 자리표시 — unplaced라 쓰이지 않는다
                 mode: "values",
                 includeIndex: "auto",
+                unplaced: true,
               });
-              state.dirtyBlocks[blockId] = true;
             });
             return id;
           },
@@ -1187,7 +1220,10 @@ export const createWorkbookStore = () => {
                 if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
               } else b.outputs.splice(i, 1);
               // 시트에 남은 출력이 없으면 블록이 시트에서 빠진다 — Python 결과로만 보기
-              if (b.outputs.every((o) => o.off) || b.outputs.length === 1 && b.outputs[0].id === outputId) {
+              if (
+                b.outputs.every((o) => o.off || o.unplaced) ||
+                (b.outputs.length === 1 && b.outputs[0].id === outputId)
+              ) {
                 b.sheetOut = false;
                 const left = clearSpillCells(state.workbook, blockId); // 꺼진 출력의 잔여분까지
                 cleared.push(...left);

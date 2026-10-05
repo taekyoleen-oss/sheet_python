@@ -5,7 +5,7 @@
 import { Badge } from "@/components/ui/badge";
 import { formatA1 } from "@/lib/grid/a1";
 import { useWorkbookStore } from "@/lib/grid/model";
-import { outputsOf } from "@/lib/grid/outputs";
+import { onSheet, outputsOf } from "@/lib/grid/outputs";
 import { blocksInOrder } from "@/lib/grid/run-block";
 import type { OutputBinding, PyBlock } from "@/types/workbook";
 
@@ -51,13 +51,16 @@ function OutputRow({
     <div className="mt-1 border-l-2 border-border pl-2">
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground">{name}</span>
-        <button
-          onClick={goToCell}
-          className="font-mono text-primary hover:underline"
-          title="셀로 이동"
-        >
-          {anchorLabel(sheetName(sheetId), output.anchor)}
-        </button>
+        {/* 시트에 놓인 출력만 셀 주소가 있다 — Python 결과로만 보는 블록·위치 미정 출력은 주소 없음 */}
+        {onSheet(block, output) && (
+          <button
+            onClick={goToCell}
+            className="font-mono text-primary hover:underline"
+            title="셀로 이동"
+          >
+            {anchorLabel(sheetName(sheetId), output.anchor)}
+          </button>
+        )}
         {status && <Badge className={status.cls}>{status.label}</Badge>}
         {!last && <span className="text-muted-foreground">실행 전</span>}
       </div>
@@ -88,6 +91,7 @@ function BlockRow({
   sheetName: (id: string) => string;
 }) {
   const outputs = outputsOf(block);
+  const placed = outputs.find((o) => onSheet(block, o)); // 셀에 놓인 첫 출력 (없으면 주소 없음)
   // stdout/stderr·소요 시간은 실행 단위(코드 1회 실행) — 출력마다 반복하지 않고 블록에 한 번만 보인다
   const run = outputs.find((o) => o.last)?.last;
   const streams = [
@@ -102,9 +106,13 @@ function BlockRow({
   return (
     <div className="border-b px-3 py-2 text-xs">
       <div className="flex items-center gap-2">
-        <span className="font-mono">
-          {anchorLabel(sheetName(block.sheetId), block.anchor)}
-        </span>
+        {placed ? (
+          <span className="font-mono">
+            {anchorLabel(sheetName(placed.sheetId ?? block.sheetId), placed.anchor)}
+          </span>
+        ) : (
+          !block.title && <span className="text-muted-foreground">Python 블록</span>
+        )}
         {block.title && <span className="truncate">{block.title}</span>}
         <span className="text-muted-foreground">
           {run ? `${run.durationMs}ms` : "실행 전"}

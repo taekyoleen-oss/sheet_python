@@ -56,16 +56,28 @@ describe("checkSpillConflict", () => {
     expect(reason).toMatch(/다른 블록의 결과\(B2\)/);
   });
 
-  it("다른 블록의 앵커(셀 없음)와 겹치면 충돌", () => {
+  it("시트에 추가된 다른 블록의 앵커(셀 없음)와 겹치면 충돌", () => {
     const sh = sheet({});
     const reason = checkSpillConflict(
       sh,
-      [block("b1", 0, 0), block("b2", 2, 1)],
+      [block("b1", 0, 0), { ...block("b2", 2, 1), sheetOut: true }],
       "b1",
       { r: 0, c: 0 },
       [4, 3],
     );
     expect(reason).toMatch(/다른 Python 블록\(B3\)/);
+  });
+
+  it("시트에 없는 블록·위치 미정 출력의 앵커는 자리를 차지하지 않는다", () => {
+    const sh = sheet({});
+    const unplaced: PyBlock = {
+      ...block("b3", 1, 1),
+      sheetOut: true,
+      outputs: [{ id: "o", anchor: { r: 1, c: 1 }, mode: "values", includeIndex: "auto", unplaced: true }],
+    };
+    expect(
+      checkSpillConflict(sh, [block("b1", 0, 0), block("b2", 2, 1), unplaced], "b1", { r: 0, c: 0 }, [4, 3]),
+    ).toBeNull();
   });
 
   it("빈 값(v:null)의 소유 없는 셀은 충돌 아님", () => {

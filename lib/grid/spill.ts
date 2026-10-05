@@ -4,7 +4,7 @@
 
 import { cellKey, type PyBlock, type Sheet } from "@/types/workbook";
 import { colToLetter } from "./a1";
-import { bindingTag, outputsOf, srcBlockId } from "./outputs";
+import { bindingTag, onSheet, outputsOf, srcBlockId } from "./outputs";
 
 export function checkSpillConflict(
   sheet: Sheet,
@@ -24,6 +24,7 @@ export function checkSpillConflict(
     for (const o of outputsOf(other)) {
       const tag = bindingTag(other.id, o);
       if (tag === owner) continue;
+      if (!onSheet(other, o)) continue; // 시트에 없는(미적용·위치 미정) 출력은 자리를 차지하지 않는다
       const sheetId = o.sheetId ?? other.sheetId;
       if (sheetId !== sheet.id) continue;
       if (o.anchor.r >= anchor.r && o.anchor.r <= r1 && o.anchor.c >= anchor.c && o.anchor.c <= c1) {

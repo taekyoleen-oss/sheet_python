@@ -96,6 +96,8 @@ export interface OutputBinding {
    * 사용자가 고른 것만 시트에 놓이고 블록 앵커는 선점하지 않는다.
    */
   off?: boolean;
+  /** '시트에 추가'로 만들었지만 아직 셀을 고르지 않은 출력 — 위치를 고르기 전엔 아무 셀도 쓰지 않는다 */
+  unplaced?: boolean;
   /** 이 출력의 마지막 실행 결과 */
   last?: RunResult;
 }

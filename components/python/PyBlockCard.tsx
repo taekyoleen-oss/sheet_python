@@ -294,10 +294,14 @@ function OutputRow({
         title="클릭 후 결과를 놓을 셀을 고르세요"
         className={cn(
           "rounded border px-1.5 py-0.5 font-mono text-xs hover:bg-accent",
-          picking ? "border-primary text-primary" : "border-transparent text-foreground/80",
+          picking
+            ? "border-primary text-primary"
+            : output.unplaced
+              ? "border-dashed border-muted-foreground/50 text-muted-foreground"
+              : "border-transparent text-foreground/80",
         )}
       >
-        {sheetId === block.sheetId ? addr : `${sheetName}!${addr}`}
+        {output.unplaced ? "셀 선택" : sheetId === block.sheetId ? addr : `${sheetName}!${addr}`}
       </button>
       {status && (
         <Badge className={status.cls} title={output.last?.summaryKo}>
@@ -356,7 +360,8 @@ function OutputRow({
 
 /** 출력 목록 — 한 블록의 결과를 여러 셀에 나눠 놓는다 (부록 D.1) */
 function OutputList({ block }: { block: PyBlock }) {
-  const outputs = outputsOf(block).filter((o) => onSheet(block, o)); // 꺼진 출력(블록 앵커)은 숨긴다
+  // 꺼진 출력(속성 창으로 처음 추가할 때의 블록 앵커)은 숨기고, 위치를 아직 안 고른 출력은 보인다
+  const outputs = outputsOf(block).filter((o) => block.sheetOut === true && !o.off);
   const [modelOpen, setModelOpen] = useState(false);
   return (
     // 카드 내부 밴드 구분: 출력 설정은 옅은 muted 배경 + 상하 경계 (설명·코드와 시각 분리)
@@ -533,7 +538,7 @@ function MoreMenu({
             <DropdownMenuShortcut>제목에서 Ctrl+Enter</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
-        {block.sheetOut === true && (
+        {outputsOf(block).some((o) => onSheet(block, o)) && (
           <DropdownMenuItem onClick={() => goToAnchor(block)}>해당 셀로 이동</DropdownMenuItem>
         )}
         <DropdownMenuItem
@@ -614,6 +619,8 @@ export default function PyBlockCard({
   );
   const collapsed = !!block.collapsed;
   const sheetOut = !isMarkdown && block.sheetOut === true;
+  // 실제로 셀에 놓인 출력이 있을 때만 주소·'해당 셀로 이동'을 보인다 (위치 미정은 셀이 없다)
+  const placed = sheetOut && outputsOf(block).some((o) => onSheet(block, o));
   const cardRef = useRef<HTMLDivElement>(null);
   const mdRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -842,7 +849,10 @@ export default function PyBlockCard({
             <button
               onClick={() => {
                 // 처음엔 결과 하나를 시트에 놓고, 다시 누를 때마다 출력이 하나씩 늘어난다
-                if (store().addOutput(block.id)) notifyWorkbookEdit([], [block.id]);
+                // 셀이 정해지지 않은 출력을 만들고 바로 '셀 선택' 상태로 — 셀을 고르면 그때 실행·반영된다
+                const id = store().addOutput(block.id);
+                // (상태 바가 '결과를 놓을 셀을 클릭하세요 · Esc 취소'를 띄운다)
+                if (id) store().setAnchorPicking({ blockId: block.id, outputId: id });
               }}
               title={
                 sheetOut
@@ -912,7 +922,7 @@ export default function PyBlockCard({
         </Button>
         <MoreMenu block={block} onRun={run} onNote={isMarkdown ? undefined : openNote} />
       </div>
-        {sheetOut && (
+        {placed && (
           <button
             onClick={() => goToAnchor(block)}
             className="shrink-0 font-mono text-xs text-foreground/80 hover:text-primary"

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { formatA1 } from "@/lib/grid/a1";
+import { onSheet, outputsOf } from "@/lib/grid/outputs";
 import { useWorkbookStore, type CellEdit } from "@/lib/grid/model";
 import type { PreviewPayload } from "@/lib/runtime/protocol";
 import { getBlob } from "@/lib/storage/db";
@@ -170,13 +171,18 @@ export default function OutputPreviewTab() {
     );
   }
 
-  const sheetName = workbook.sheets.find((s) => s.id === block.sheetId)?.name ?? "?";
-  const anchorLabel = `${sheetName}!${formatA1({
-    r0: block.anchor.r,
-    c0: block.anchor.c,
-    r1: block.anchor.r,
-    c1: block.anchor.c,
-  })}`;
+  // 시트에 놓인 결과가 있으면 그 셀 주소, 없으면 블록 제목 (Python 결과로만 보는 블록은 셀이 없다)
+  const placed = outputsOf(block).find((o) => onSheet(block, o));
+  const placedSheet =
+    workbook.sheets.find((s) => s.id === (placed?.sheetId ?? block.sheetId))?.name ?? "?";
+  const anchorLabel = placed
+    ? `${placedSheet}!${formatA1({
+        r0: placed.anchor.r,
+        c0: placed.anchor.c,
+        r1: placed.anchor.r,
+        c1: placed.anchor.c,
+      })}`
+    : block.title || "Python 블록";
   const preview = block.last.preview as PreviewPayload | undefined;
 
   return (

@@ -175,6 +175,7 @@ export const calcHost: CalcHost = {
       if (conflict && first && onSheet(block, first)) {
         st.applyBlockResult(blockId, [[{ v: "#SPILL!", t: "e" }]], {
           last: { ...base, status: "spill", summaryKo: conflict },
+          clearPrevious: true, // 엑셀처럼: 펼칠 수 없으면 이전 결과 영역도 비우고 #SPILL!만 남긴다
         });
         return;
       }
@@ -328,6 +329,7 @@ export const calcHost: CalcHost = {
             applies.push({
               outputId,
               cells: [[{ v: "#SPILL!", t: "e" }]],
+              clearPrevious: true, // 이전 결과 영역도 함께 비운다 (남은 셀이 새 자리를 막지 않게)
               last: { ...base, status: "spill", summaryKo: conflict },
             });
             continue;

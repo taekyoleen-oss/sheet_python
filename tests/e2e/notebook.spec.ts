@@ -315,7 +315,8 @@ test("다중 출력: 한 블록의 두 결과를 서로 다른 셀에 (부록 D.
       () => (window as any).__pygridStore.getState().workbook.pyBlocks[0].outputs.length,
     ),
   ).toBe(2);
-  await codeCard.getByRole("button", { name: "출력 2 위치" }).click();
+  // 새 출력은 셀이 정해지지 않은 채('셀 선택') 바로 위치 지정 모드로 들어간다
+  await expect(codeCard.getByRole("button", { name: "출력 2 위치" })).toHaveText("셀 선택");
   await expect(page.getByText("결과를 놓을 셀을 클릭하세요")).toBeVisible();
   await clickCell(page, cal, 7, 6); // G8
   expect((await block0(page)).outputs[1].anchor).toEqual({ r: 7, c: 6 });
