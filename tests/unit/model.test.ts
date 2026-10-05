@@ -337,9 +337,9 @@ describe("다중 출력 (부록 D.1)", () => {
     const { store, sheetId } = fresh();
     const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
     const b = () => store.getState().workbook.pyBlocks[0];
-    expect(b().toSheet).toBeUndefined();
+    expect(b().sheetOut).toBeUndefined();
     const first = store.getState().addOutput(id);
-    expect(b().toSheet).toBe(true);
+    expect(b().sheetOut).toBe(true);
     expect(b().outputs).toHaveLength(1);
     expect(first).toBe(b().outputs![0].id);
     const second = store.getState().addOutput(id)!;
@@ -347,7 +347,7 @@ describe("다중 출력 (부록 D.1)", () => {
     store.getState().removeOutput(id, second);
     store.getState().removeOutput(id, first!);
     expect(b().outputs).toHaveLength(1);
-    expect(b().toSheet).toBe(false);
+    expect(b().sheetOut).toBe(false);
   });
 
   it("속성 창·모델 결과로 처음 시트에 추가하면 블록 앵커(기존 첫 출력)는 끄고 고른 것만 쓴다", () => {
@@ -359,7 +359,7 @@ describe("다중 출력 (부록 D.1)", () => {
       { sheetId, r: 0, c: 7 },
     );
     const b = () => store.getState().workbook.pyBlocks[0];
-    expect(b().toSheet).toBe(true);
+    expect(b().sheetOut).toBe(true);
     expect(b().outputs![0].off).toBe(true);
     store.getState().applyOutputResults(id, [
       { outputId: b().outputs![0].id, cells: [[{ v: 1, t: "n" }]], clearPrevious: true },
@@ -368,9 +368,37 @@ describe("다중 출력 (부록 D.1)", () => {
     expect(cells(store)["0:0"]).toBeUndefined(); // 앵커는 선점하지 않는다
     expect(cells(store)["0:7"]?.v).toBe(2);
     store.getState().removeOutput(id, added); // 고른 출력을 지우면 시트에서 빠진다
-    expect(b().toSheet).toBe(false);
+    expect(b().sheetOut).toBe(false);
     expect(b().outputs![0].off).toBeUndefined();
     expect(cells(store)["0:7"]).toBeUndefined();
+  });
+
+  it("이전 버전에서 시트에 켜 둔 블록(toSheet·출력 여러 개·spill)도 열면 모두 미적용", () => {
+    const { store, sheetId } = fresh();
+    const wb = structuredClone(store.getState().workbook);
+    wb.pyBlocks = [
+      {
+        id: "old",
+        sheetId,
+        anchor: { r: 4, c: 13 },
+        code: "1+1",
+        outputMode: "values",
+        includeIndex: "auto",
+        toSheet: true,
+        outputs: [
+          { id: "o1", anchor: { r: 4, c: 13 }, mode: "values", includeIndex: "auto" },
+          { id: "o2", anchor: { r: 0, c: 20 }, mode: "values", includeIndex: "auto", off: true },
+        ],
+      } as PyBlock,
+    ];
+    wb.sheets[0].cells = { "4:13": { v: 2, t: "n", src: "old:o1" }, "0:20": { v: 3, t: "n", src: "old:o2" } };
+    store.getState().loadWorkbook(wb);
+    const b = store.getState().workbook.pyBlocks[0];
+    expect(b.sheetOut).toBeUndefined();
+    expect((b as { toSheet?: boolean }).toSheet).toBeUndefined();
+    expect(b.outputs).toHaveLength(1);
+    expect(b.outputs![0].off).toBeUndefined();
+    expect(cells(store)).toEqual({});
   });
 
   it("addPyBlock은 outputs 1개로 시작하고 레거시 필드와 동기화된다", () => {
@@ -510,7 +538,7 @@ describe("다중 출력 (부록 D.1)", () => {
       sheetId,
       anchor: { r: 2, c: 1 },
       code: "1+1",
-      toSheet: true,
+      sheetOut: true,
       outputMode: "values",
       includeIndex: "auto",
       output: { rowLimit: 5 },

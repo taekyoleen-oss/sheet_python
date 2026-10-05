@@ -127,7 +127,7 @@ export interface PyBlock {
    * 결과를 시트 셀에 쓸지. true일 때만 쓴다 — 기본(없음)은 카드 아래 Python 결과로만 본다.
    * 카드의 '시트에 추가'로 켜고, 마지막 출력을 지우면 꺼진다.
    */
-  toSheet?: boolean;
+  sheetOut?: boolean;
   /** 출력 선택 (변수·열·행) — 레거시 단일 출력. 로드 시 outputs[0]로 정규화된다 */
   output?: OutputSelection;
   /**

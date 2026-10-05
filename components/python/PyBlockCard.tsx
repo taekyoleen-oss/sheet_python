@@ -533,7 +533,7 @@ function MoreMenu({
             <DropdownMenuShortcut>제목에서 Ctrl+Enter</DropdownMenuShortcut>
           </DropdownMenuItem>
         )}
-        {block.toSheet === true && (
+        {block.sheetOut === true && (
           <DropdownMenuItem onClick={() => goToAnchor(block)}>해당 셀로 이동</DropdownMenuItem>
         )}
         <DropdownMenuItem
@@ -613,7 +613,7 @@ export default function PyBlockCard({
     (s) => s.workbook.sheets.find((sh) => sh.id === pos.sheetId)?.name ?? "?",
   );
   const collapsed = !!block.collapsed;
-  const toSheet = !isMarkdown && block.toSheet === true;
+  const sheetOut = !isMarkdown && block.sheetOut === true;
   const cardRef = useRef<HTMLDivElement>(null);
   const mdRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -845,7 +845,7 @@ export default function PyBlockCard({
                 if (store().addOutput(block.id)) notifyWorkbookEdit([], [block.id]);
               }}
               title={
-                toSheet
+                sheetOut
                   ? "출력을 하나 더 시트에 추가합니다 — 위치·변수·열·행은 아래에서 고릅니다"
                   : "결과를 시트에 추가합니다 — 기본은 Python 결과로만 봅니다"
               }
@@ -912,7 +912,7 @@ export default function PyBlockCard({
         </Button>
         <MoreMenu block={block} onRun={run} onNote={isMarkdown ? undefined : openNote} />
       </div>
-        {toSheet && (
+        {sheetOut && (
           <button
             onClick={() => goToAnchor(block)}
             className="shrink-0 font-mono text-xs text-foreground/80 hover:text-primary"
@@ -1083,7 +1083,7 @@ export default function PyBlockCard({
                     )}
                   </div>
                 )}
-                {toSheet && <OutputList block={block} />}
+                {sheetOut && <OutputList block={block} />}
                 {narrow ? (
                   <>
                     <button

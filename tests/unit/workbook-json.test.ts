@@ -33,7 +33,7 @@ function sampleWorkbook(): Workbook {
       sheetId: wb.sheets[0].id,
       anchor: { r: 4, c: 0 },
       code: 'xl("A1")',
-      toSheet: true, // 시트에 추가된 블록 — spill·앵커 카드가 왕복 보존돼야 한다
+      sheetOut: true, // 시트에 추가된 블록 — spill·앵커 카드가 왕복 보존돼야 한다
       outputMode: "object",
       includeIndex: "always",
       title: "생명표 요약",
@@ -165,7 +165,7 @@ describe("workbook-json", () => {
           sheetId: "s",
           anchor: { r: 0, c: 0 },
           code: "1+1",
-          toSheet: true,
+          sheetOut: true,
           outputMode: "values",
           includeIndex: "always",
           output: { variable: "df" },

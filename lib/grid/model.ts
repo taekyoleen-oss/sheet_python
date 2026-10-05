@@ -38,6 +38,7 @@ import {
   normalizeBlock,
   normalizeWorkbook,
   onSheet,
+  resetSheetOutputs,
   outputsOf,
   srcBlockId,
   srcTag,
@@ -1113,11 +1114,11 @@ export const createWorkbookStore = () => {
             const sheet = st.workbook.sheets.find((s) => s.id === block.sheetId);
             if (!sheet) return null;
             // '시트에 추가' — 처음 누르면 기존 출력(앵커)을 켜고, 이후로는 하나씩 추가한다
-            if (block.toSheet !== true) {
+            if (block.sheetOut !== true) {
               set((state) => {
                 const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
                 if (!b) return;
-                b.toSheet = true;
+                b.sheetOut = true;
                 if (b.outputs?.[0]) delete b.outputs[0].off;
                 state.dirtyBlocks[blockId] = true;
               });
@@ -1154,8 +1155,8 @@ export const createWorkbookStore = () => {
               const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
               if (!b) return;
               // 속성 창·모델 결과 → 시트: 보내는 것 자체가 시트에 추가. 처음이면 기존 출력(블록 앵커)은 끈다
-              if (b.toSheet !== true) for (const o of b.outputs ?? []) o.off = true;
-              b.toSheet = true;
+              if (b.sheetOut !== true) for (const o of b.outputs ?? []) o.off = true;
+              b.sheetOut = true;
               for (const spec of specs) {
                 const id = newId();
                 ids.push(id);
@@ -1187,8 +1188,10 @@ export const createWorkbookStore = () => {
               } else b.outputs.splice(i, 1);
               // 시트에 남은 출력이 없으면 블록이 시트에서 빠진다 — Python 결과로만 보기
               if (b.outputs.every((o) => o.off) || b.outputs.length === 1 && b.outputs[0].id === outputId) {
-                b.toSheet = false;
-                for (const o of b.outputs) delete o.off;
+                b.sheetOut = false;
+                const left = clearSpillCells(state.workbook, blockId); // 꺼진 출력의 잔여분까지
+                cleared.push(...left);
+                resetSheetOutputs(b);
               }
               syncLegacy(b);
               if (cleared.length > 0) recalcFormulas(state.workbook, cleared);
@@ -1267,9 +1270,9 @@ export const createWorkbookStore = () => {
             set((state) => {
               const block = state.workbook.pyBlocks.find((b) => b.id === id);
               if (!block) return;
-              block.toSheet = on;
+              block.sheetOut = on;
               if (on) return;
-              for (const o of block.outputs ?? []) if (o.last?.spillRange) delete o.last.spillRange;
+              resetSheetOutputs(block);
               syncLegacy(block);
               const boxes = clearSpillCells(state.workbook, id);
               if (boxes.length > 0) recalcFormulas(state.workbook, boxes);
