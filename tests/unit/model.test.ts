@@ -129,9 +129,26 @@ describe("워크북 스토어", () => {
     ]);
     expect(store.getState().setCellValue(sheetId, 0, 0, { v: 2, t: "n" })).toBe(false);
     expect(cells(store)["0:0"].v).toBe(1);
-    // clearRange도 잠긴 셀은 남긴다
-    store.getState().clearRange(sheetId, { r0: 0, c0: 0, r1: 0, c1: 0 });
-    expect(cells(store)["0:0"].v).toBe(1);
+  });
+
+  it("Del(clearRange)이 Python 결과 셀에 닿으면 그 출력을 통째로 시트에서 뺀다 — 블록은 남고 한 undo 단계", async () => {
+    const { store, sheetId } = fresh();
+    const id = store.getState().addPyBlock(sheetId, { r: 0, c: 0 })!;
+    const b = () => store.getState().workbook.pyBlocks.find((x) => x.id === id)!;
+    const out = b().outputs![0].id;
+    store.getState().setBlockToSheet(id, true);
+    store.getState().setCells(sheetId, [
+      { r: 0, c: 0, cell: { v: 1, t: "n", src: `${id}:${out}` } },
+      { r: 1, c: 0, cell: { v: 2, t: "n", src: `${id}:${out}` } },
+      { r: 0, c: 2, cell: { v: "x", t: "s" } },
+    ]);
+    await sleep(350);
+    const depth = store.temporal.getState().pastStates.length;
+    store.getState().clearRange(sheetId, { r0: 1, c0: 0, r1: 1, c1: 2 }); // spill 일부 + 빈 칸
+    expect(cells(store)).toEqual({ "0:2": { v: "x", t: "s" } }); // spill 전체가 지워짐, 범위 밖 값은 그대로
+    expect(b().sheetOut).toBe(false);
+    await sleep(350);
+    expect(store.temporal.getState().pastStates.length).toBe(depth + 1);
   });
 
   it("시트 추가/이름 변경/이동/삭제", () => {

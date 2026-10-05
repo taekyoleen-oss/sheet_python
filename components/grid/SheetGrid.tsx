@@ -39,6 +39,7 @@ import { onSheet, outputsOf, srcBlockId } from "@/lib/grid/outputs";
 import { applyAnchorPick } from "@/lib/grid/run-block";
 import {
   cellKey,
+  parseCellKey,
   type CellRange,
   type OutputBinding,
   type PyBlock,
@@ -54,7 +55,7 @@ interface AnchorEntry {
 function spillLockMessage(src: string): string {
   const st = useWorkbookStore.getState();
   const block = st.workbook.pyBlocks.find((b) => b.id === srcBlockId(src));
-  if (!block) return "Python 블록의 결과입니다. 코드를 수정하거나 블록을 삭제하세요";
+  if (!block) return "Python 블록의 결과입니다. 코드를 수정하거나 Del로 시트에서 빼세요";
   const sheetName = st.workbook.sheets.find((s) => s.id === block.sheetId)?.name ?? "?";
   const addr = formatA1({
     r0: block.anchor.r,
@@ -62,7 +63,7 @@ function spillLockMessage(src: string): string {
     r1: block.anchor.r,
     c1: block.anchor.c,
   });
-  return `블록 ${sheetName}!${addr}의 결과입니다. 코드를 수정하거나 블록을 삭제하세요`;
+  return `블록 ${sheetName}!${addr}의 결과입니다. 코드를 수정하거나 Del로 시트에서 빼세요`;
 }
 
 const EMPTY_SELECTION: GridSelection = {
@@ -80,7 +81,22 @@ const DENSITY = {
 const PRIMARY = "#4A90C2";
 const WARNING = "#D9A441";
 const DESTRUCTIVE = "#C2504A";
-const MUTED = "#6B7280";
+
+/** 엑셀 키 동작 — Enter/Shift+Enter 아래·위 이동, F2 편집, Esc는 선택 유지, Ctrl+D·R 채우기.
+ *  복사·붙여넣기는 WorkbookShell이, Ctrl+End(마지막 사용 셀)는 onWrapperKeyDown이 소유 */
+const EXCEL_KEYS = {
+  copy: false,
+  cut: false,
+  paste: false,
+  activateCell: "F2",
+  goDownCell: "ArrowDown|Enter",
+  goUpCell: "ArrowUp|shift+Enter",
+  clear: false,
+  downFill: true,
+  rightFill: true,
+  goToLastCell: false,
+  selectToLastCell: false,
+} as const;
 
 const inRange = (rg: CellRange, r: number, c: number): boolean =>
   r >= rg.r0 && r <= rg.r1 && c >= rg.c0 && c <= rg.c1;
@@ -154,10 +170,7 @@ export default function SheetGrid() {
   const anchorMap = useMemo(() => {
     const map = new Map<string, AnchorEntry>();
     for (const b of pyBlocks) {
-      if (b.kind === "markdown") {
-        if (b.sheetId === sheet.id) map.set(cellKey(b.anchor.r, b.anchor.c), { block: b });
-        continue;
-      }
+      // 마크다운은 시트에 쓰는 것이 없다 — 배지도 자리도 없음.
       // 시트에 추가하지 않은 블록·출력은 셀을 선점하지 않는다 (배지·#BUSY! 없음)
       for (const o of outputsOf(b)) {
         if (!onSheet(b, o) || (o.sheetId ?? b.sheetId) !== sheet.id) continue;
@@ -456,23 +469,22 @@ export default function SheetGrid() {
         ctx.restore();
       }
 
-      // 앵커 배지 (우상단 칩) — 코드는 [PY], 마크다운은 [§](Python 관여가 아니라 muted)
+      // 앵커 배지 (우상단 칩) — 시트에 놓인 Python 출력만 [PY]
       if (anchorBlock) {
-        const isMd = anchorBlock.kind === "markdown";
         ctx.save();
-        const w = isMd ? 12 : 22;
+        const w = 22;
         const h = 11;
         const x = rect.x + rect.width - w - 2;
         const y = rect.y + 2;
-        ctx.fillStyle = isMd ? MUTED : PRIMARY;
+        ctx.fillStyle = PRIMARY;
         ctx.beginPath();
         ctx.roundRect(x, y, w, h, 2);
         ctx.fill();
         ctx.fillStyle = "#FFFFFF";
-        ctx.font = `700 ${isMd ? 9 : 7}px "JetBrains Mono", monospace`;
+        ctx.font = `700 7px "JetBrains Mono", monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(isMd ? "§" : "PY", x + w / 2, y + h / 2 + 0.5);
+        ctx.fillText("PY", x + w / 2, y + h / 2 + 0.5);
         ctx.restore();
       }
     },
@@ -810,6 +822,24 @@ export default function SheetGrid() {
         }
         return;
       }
+      // Ctrl+End — 엑셀처럼 마지막으로 쓴 행·열 교차 셀 (Shift면 거기까지 선택)
+      if (e.key === "End" && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        const t = e.target as HTMLElement;
+        if (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable) return;
+        e.preventDefault();
+        e.stopPropagation();
+        let r = 0;
+        let c = 0;
+        for (const key of Object.keys(sheet.cells)) {
+          const k = parseCellKey(key);
+          if (k.r > r) r = k.r;
+          if (k.c > c) c = k.c;
+        }
+        const cur = gridSelection.current;
+        if (e.shiftKey && cur) applySelection({ r: cur.cell[1], c: cur.cell[0] }, { r, c });
+        else applySelection({ r, c }, { r, c });
+        return;
+      }
       bufferCanvasKey(e);
     },
     [gridSelection, sheet, applySelection, extendCorner, bufferCanvasKey],
@@ -864,7 +894,7 @@ export default function SheetGrid() {
             freezeColumns={sheet.frozenCols ?? 0}
             rowMarkers="number"
             getCellsForSelection={true}
-            keybindings={{ copy: false, cut: false, paste: false }} // 복사·붙여넣기는 WorkbookShell이 소유
+            keybindings={EXCEL_KEYS}
             smoothScrollX
             smoothScrollY
             width="100%"

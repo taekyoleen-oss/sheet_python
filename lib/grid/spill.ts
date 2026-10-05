@@ -34,17 +34,7 @@ export function checkSpillConflict(
           : `다른 Python 블록(${at})과 겹칩니다`;
       }
     }
-    // 마크다운 블록은 출력이 없지만 앵커는 자리를 차지한다
-    if (other.kind === "markdown" && other.sheetId === sheet.id) {
-      if (
-        other.anchor.r >= anchor.r &&
-        other.anchor.r <= r1 &&
-        other.anchor.c >= anchor.c &&
-        other.anchor.c <= c1
-      ) {
-        return `다른 Python 블록(${colToLetter(other.anchor.c)}${other.anchor.r + 1})과 겹칩니다`;
-      }
-    }
+    // 마크다운 블록은 시트에 쓰는 것이 없어 자리를 차지하지 않는다
   }
 
   for (let r = anchor.r; r <= r1; r++) {

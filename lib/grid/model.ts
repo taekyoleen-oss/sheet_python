@@ -246,6 +246,30 @@ function clearSpillCells(wb: Workbook, blockId: string, outputId?: string): Shee
   return boxes;
 }
 
+/** 출력 하나를 시트에서 뺀다(draft 안). 남은 출력이 없으면 블록이 시트에서 빠진다. 반환: 지운 셀 범위 */
+function dropOutput(state: WorkbookState, blockId: string, outputId: string): SheetRange[] {
+  const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
+  if (!b?.outputs) return [];
+  const i = b.outputs.findIndex((o) => o.id === outputId);
+  if (i < 0) return [];
+  const cleared = clearSpillCells(state.workbook, blockId, outputId);
+  if (b.outputs.length <= 1) {
+    if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
+  } else b.outputs.splice(i, 1);
+  // 시트에 남은 출력이 없으면 블록이 시트에서 빠진다 — Python 결과로만 보기
+  if (
+    b.outputs.every((o) => o.off || o.unplaced) ||
+    (b.outputs.length === 1 && b.outputs[0].id === outputId)
+  ) {
+    b.sheetOut = false;
+    cleared.push(...clearSpillCells(state.workbook, blockId)); // 꺼진 출력의 잔여분까지
+    resetSheetOutputs(b);
+  }
+  syncLegacy(b);
+  state.dirtyBlocks[blockId] = true;
+  return cleared;
+}
+
 /** 새 출력·블록 자리 찾기용: 값·spill·블록 앵커·다른 출력 앵커가 있으면 쓸 수 없다 */
 export function cellTaken(sheet: Sheet, blocks: PyBlock[], r: number, c: number): boolean {
   const cell = sheet.cells[cellKey(r, c)];
@@ -635,15 +659,24 @@ export const createWorkbookStore = () => {
           clearRange: (sheetId, range) =>
             mutateSheet(
               sheetId,
-              (sh) => {
+              (sh, wb, st) => {
                 const { r0, c0, r1, c1 } = norm(range);
+                const outs = new Set<string>();
                 // ponytail: 저장된 셀 전체 스캔 O(cells) — 범위 인덱스가 필요해지면 교체
                 for (const key of Object.keys(sh.cells)) {
                   const { r, c } = parseCellKey(key);
-                  if (r >= r0 && r <= r1 && c >= c0 && c <= c1 && !sh.cells[key].src) {
-                    delete sh.cells[key];
-                  }
+                  if (r < r0 || r > r1 || c < c0 || c > c1) continue;
+                  const src = sh.cells[key].src;
+                  if (src) outs.add(src);
+                  else delete sh.cells[key];
                 }
+                // Python 결과 셀이 끼면 그 출력을 통째로 시트에서 뺀다(블록은 남는다) — 같은 undo 단계
+                const cleared: SheetRange[] = [];
+                for (const src of outs) {
+                  const blockId = srcBlockId(src);
+                  cleared.push(...dropOutput(st, blockId, src.slice(blockId.length + 1)));
+                }
+                if (cleared.length > 0) recalcFormulas(wb, cleared);
               },
               [range],
             ),
@@ -1211,27 +1244,8 @@ export const createWorkbookStore = () => {
 
           removeOutput: (blockId, outputId) =>
             set((state) => {
-              const b = state.workbook.pyBlocks.find((x) => x.id === blockId);
-              if (!b?.outputs) return;
-              const i = b.outputs.findIndex((o) => o.id === outputId);
-              if (i < 0) return;
-              const cleared = clearSpillCells(state.workbook, blockId, outputId);
-              if (b.outputs.length <= 1) {
-                if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
-              } else b.outputs.splice(i, 1);
-              // 시트에 남은 출력이 없으면 블록이 시트에서 빠진다 — Python 결과로만 보기
-              if (
-                b.outputs.every((o) => o.off || o.unplaced) ||
-                (b.outputs.length === 1 && b.outputs[0].id === outputId)
-              ) {
-                b.sheetOut = false;
-                const left = clearSpillCells(state.workbook, blockId); // 꺼진 출력의 잔여분까지
-                cleared.push(...left);
-                resetSheetOutputs(b);
-              }
-              syncLegacy(b);
+              const cleared = dropOutput(state, blockId, outputId);
               if (cleared.length > 0) recalcFormulas(state.workbook, cleared);
-              state.dirtyBlocks[blockId] = true;
             }),
 
           setOutputSelection: (blockId, outputId, patch) =>
