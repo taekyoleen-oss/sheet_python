@@ -63,7 +63,13 @@ export function resetSheetOutputs(b: PyBlock): void {
   b.outputs = [b.outputs[0]];
   delete b.outputs[0].off;
   delete b.outputs[0].unplaced;
-  if (b.outputs[0].last?.spillRange) delete b.outputs[0].last.spillRange;
+  const last = b.outputs[0].last;
+  if (last?.spillRange) delete last.spillRange;
+  // #SPILL!은 시트 자리 충돌일 뿐 실행은 성공 — 시트에서 빠지면 배지·진단에 남기지 않는다
+  if (last?.status === "spill") {
+    last.status = "ok";
+    delete last.summaryKo;
+  }
 }
 
 /** 코드 블록에 출력 바인딩 최소 1개를 보장한다 (레거시 필드에서 유도) */

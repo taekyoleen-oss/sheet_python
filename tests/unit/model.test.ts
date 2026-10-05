@@ -388,7 +388,13 @@ describe("다중 출력 (부록 D.1)", () => {
         includeIndex: "auto",
         toSheet: true,
         outputs: [
-          { id: "o1", anchor: { r: 4, c: 13 }, mode: "values", includeIndex: "auto" },
+          {
+            id: "o1",
+            anchor: { r: 4, c: 13 },
+            mode: "values",
+            includeIndex: "auto",
+            last: { status: "spill", summaryKo: "겹침", stdout: "", stderr: "", durationMs: 1, ranAt: "" },
+          },
           { id: "o2", anchor: { r: 0, c: 20 }, mode: "values", includeIndex: "auto", off: true },
         ],
       } as PyBlock,
@@ -400,6 +406,8 @@ describe("다중 출력 (부록 D.1)", () => {
     expect((b as { toSheet?: boolean }).toSheet).toBeUndefined();
     expect(b.outputs).toHaveLength(1);
     expect(b.outputs![0].off).toBeUndefined();
+    expect(b.last?.status).toBe("ok"); // 시트에 없으니 #SPILL! 배지·진단도 남지 않는다
+    expect(b.last?.summaryKo).toBeUndefined();
     expect(cells(store)).toEqual({});
   });
 
