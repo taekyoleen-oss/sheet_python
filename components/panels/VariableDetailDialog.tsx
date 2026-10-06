@@ -30,39 +30,98 @@ async function previewOf(code: string): Promise<PreviewPayload | { kind: "error"
   return payload.preview ?? { kind: "repr", repr: "(미리보기 없음)" };
 }
 
+/** 보기 전용 소수 자리 — 값(데이터)은 그대로, 화면 표시만 바꾼다 */
+const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10] as const;
+const DEFAULT_DIGITS = 5;
+
+function DigitsSelect({ value, onChange, label, inherit }: { value: number | null; onChange: (d: number | null) => void; label: string; inherit?: boolean }) {
+  return (
+    <select
+      aria-label={label}
+      title={label}
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+      className="rounded border bg-background px-1 py-0.5 font-sans text-[11px] font-normal"
+    >
+      {inherit && <option value="">전체</option>}
+      {DIGITS.map((d) => (
+        <option key={d} value={d}>
+          {d}자리
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function PreviewView({ p }: { p: PreviewPayload | { kind: "error"; message: string } | null }) {
+  // 전체 소수 자리 + 열마다 덮어쓰기(null = 전체를 따름)
+  const [digits, setDigits] = useState(DEFAULT_DIGITS);
+  const [colDigits, setColDigits] = useState<Record<number, number | null>>({});
   if (!p) return <p className="py-6 text-center text-sm text-muted-foreground">불러오는 중…</p>;
   if (p.kind === "error") return <p className="text-sm text-destructive">{p.message}</p>;
   if (p.kind === "image") return <p className="text-sm text-muted-foreground">이미지 값입니다 — 시트에 객체로 놓아 보세요.</p>;
-  if (p.kind === "repr")
-    return <pre className="max-h-[55vh] overflow-auto rounded bg-muted/40 p-3 font-mono text-xs whitespace-pre">{p.repr}</pre>;
+  const toolbar = (
+    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      소수 자리 <DigitsSelect value={digits} onChange={(d) => setDigits(d ?? DEFAULT_DIGITS)} label="소수 자리 (전체)" />
+      <span>— 보기에만 적용, 데이터는 그대로</span>
+    </label>
+  );
+  if (p.kind === "repr") {
+    // 숫자 하나(float 스칼라)만 전체 소수 자리로 — 그 밖의 repr 원문은 그대로
+    const n = /^-?\d+\.\d+(e[-+]?\d+)?$/i.test(p.repr.trim()) ? Number(p.repr) : null;
+    return (
+      <div className="grid gap-2">
+        {n !== null && toolbar}
+        <pre className="max-h-[55vh] overflow-auto rounded bg-muted/40 p-3 font-mono text-xs whitespace-pre">
+          {n !== null ? n.toFixed(digits) : p.repr}
+        </pre>
+      </div>
+    );
+  }
+  // 소수가 있는 열(float dtype 또는 정수가 아닌 숫자)만 자리수를 고를 수 있다
+  const decimalCol = p.columns.map(
+    (_, i) => /float|complex/.test(p.dtypes[i] ?? "") || p.rows.some((r) => typeof r[i] === "number" && !Number.isInteger(r[i])),
+  );
+  const show = (v: string | number | boolean | null, c: number) =>
+    typeof v === "number" && decimalCol[c] && Number.isFinite(v) ? v.toFixed(colDigits[c] ?? digits) : String(v);
   return (
-    <div className="max-h-[55vh] overflow-auto rounded border">
-      <table className="w-full border-collapse font-mono text-xs tabular-nums">
-        <thead className="sticky top-0 bg-muted">
-          <tr>
-            <th className="border-b px-2 py-1 text-right font-normal text-muted-foreground">#</th>
-            {p.columns.map((c, i) => (
-              <th key={i} className="border-b px-2 py-1 text-left">
-                <div>{c}</div>
-                <div className="font-normal text-muted-foreground">{p.dtypes[i]}</div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {p.rows.map((row, r) => (
-            <tr key={r} className="border-b last:border-0">
-              <td className="px-2 py-0.5 text-right text-muted-foreground">{r}</td>
-              {row.map((v, c) => (
-                <td key={c} className={cn("px-2 py-0.5", typeof v === "number" ? "text-right" : "text-left")}>
-                  {v === null ? <span className="text-muted-foreground">NaN</span> : String(v)}
-                </td>
+    <div className="grid min-w-0 gap-2">
+      {decimalCol.some(Boolean) && toolbar}
+      <div className="max-h-[55vh] overflow-auto rounded border">
+        <table className="w-full border-collapse font-mono text-xs tabular-nums">
+          <thead className="sticky top-0 bg-muted">
+            <tr>
+              <th className="border-b px-2 py-1 text-right font-normal text-muted-foreground">#</th>
+              {p.columns.map((c, i) => (
+                <th key={i} className="border-b px-2 py-1 text-left align-top">
+                  <div>{c}</div>
+                  <div className="font-normal text-muted-foreground">{p.dtypes[i]}</div>
+                  {decimalCol[i] && (
+                    <DigitsSelect
+                      inherit
+                      value={colDigits[i] ?? null}
+                      onChange={(d) => setColDigits((m) => ({ ...m, [i]: d }))}
+                      label={`${c} 소수 자리`}
+                    />
+                  )}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {p.rows.map((row, r) => (
+              <tr key={r} className="border-b last:border-0">
+                <td className="px-2 py-0.5 text-right text-muted-foreground">{r}</td>
+                {row.map((v, c) => (
+                  <td key={c} className={cn("px-2 py-0.5", typeof v === "number" ? "text-right" : "text-left")}>
+                    {v === null ? <span className="text-muted-foreground">NaN</span> : show(v, c)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -163,7 +222,7 @@ export default function VariableDetailDialog({
                 ))}
               </div>
             )}
-            <PreviewView p={tab === "data" ? data : stats} />
+            <PreviewView key={`${info.name}:${tab}`} p={tab === "data" ? data : stats} />
           </div>
         )}
 

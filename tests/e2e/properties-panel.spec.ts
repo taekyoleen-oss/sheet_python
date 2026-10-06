@@ -76,6 +76,15 @@ test("속성 창: 작업 폴더 지정 → 파일 불러오기 → 변수 → �
   const detail = page.getByTestId("variable-detail");
   await expect(detail.getByText("int64").first()).toBeVisible({ timeout: 30_000 });
   await expect(detail.getByRole("cell", { name: "250" })).toBeVisible();
+  await expect(detail.getByLabel("소수 자리 (전체)")).toHaveCount(0); // 정수 열뿐이면 자리수 선택 없음
+  // 요약 통계(float) — 기본 소수 5자리, 전체 2자리, 열(mean)만 0자리 — 보기에만
+  await detail.getByRole("tab", { name: "요약 통계" }).click();
+  await expect(detail.getByRole("cell", { name: "40.00000" }).first()).toBeVisible({ timeout: 30_000 });
+  await detail.getByLabel("소수 자리 (전체)").selectOption("2");
+  await expect(detail.getByRole("cell", { name: "40.00" }).first()).toBeVisible();
+  await detail.getByLabel("mean 소수 자리").selectOption("0");
+  await expect(detail.getByRole("cell", { name: "40", exact: true })).toBeVisible();
+  await expect(detail.getByRole("cell", { name: "3.00" }).first()).toBeVisible(); // count 열은 전체(2자리) 그대로
   await detail.getByRole("button", { name: "스프레드시트에 보이기" }).click();
   await page.getByRole("button", { name: "시트에 보이기", exact: true }).click();
   await expect
