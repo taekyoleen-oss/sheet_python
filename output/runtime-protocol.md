@@ -12,7 +12,7 @@
 | `lib/runtime/py/bootstrap.py` | 워커 내부 헬퍼(`_pygrid_exec_capture`·`_pygrid_run`·`_pygrid_inspect`·`_pygrid_reset`·`_pygrid_mpl_setup`) |
 | `lib/runtime/py/xl.py` | `xl()` 브리지: 참조 추출(ast) + 스냅샷 캐시 → §3.3 입력 변환(DataFrame/스칼라) |
 | `lib/runtime/py/model_out.py` | 부록 O.5 모델 결과 헬퍼: 카탈로그(`_pygrid_model_info`)·계수표·적합 통계·예측(구간)·평가 지표. 부트 시 convert.py 다음에 로드 |
-| `lib/runtime/py/convert.py` | §3.3 출력 변환: 값 모드 `cells`, 객체 모드 preview/PNG. 단일 출력 `_pygrid_run_convert`, 다중 출력 `_pygrid_run_convert_multi` |
+| `lib/runtime/py/convert.py` | §3.3 출력 변환: 값 모드 `cells`, 객체 모드 preview/PNG(표 preview는 기본 번호가 아닌 행 이름을 맨 앞 열로 — 헤더는 인덱스 이름, 없으면 빈 문자열, MultiIndex는 수준마다 한 열. `shape`는 데이터 모양 그대로). 단일 출력 `_pygrid_run_convert`, 다중 출력 `_pygrid_run_convert_multi` |
 | `lib/runtime/converters.ts` | `OutCell[][]` → `Cell[][]`(`toCells`), 앵커+shape → `spillRange`. 순수 함수 |
 | `lib/runtime/py/init_default.py` | 기본 초기화 스크립트. `client.ts`가 `DEFAULT_INIT_SCRIPT`로 재수출 |
 

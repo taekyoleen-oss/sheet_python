@@ -114,7 +114,7 @@ def _pygrid_png_b64(fig):
 
 
 def _pygrid_to_preview(value):
-    """객체 모드: (kind, shape, preview, pngB64). 미리보기는 index 없이 열만 보여준다."""
+    """객체 모드: (kind, shape, preview, pngB64). 미리보기는 열 + (기본 번호가 아닌) 행 이름을 맨 앞 열로."""
     import datetime as _dt
 
     import numpy as np
@@ -130,10 +130,22 @@ def _pygrid_to_preview(value):
             [_pygrid_cell(head.iloc[i, j])["v"] for j in range(head.shape[1])]
             for i in range(head.shape[0])
         ]
+        columns = [str(c) for c in value.columns]
+        dtypes = [str(d) for d in value.dtypes]
+        # 행 이름(기본 0,1,2… 번호가 아닌 인덱스 — corr·describe·value_counts 등)은 맨 앞 열로 보인다
+        idx = value.index
+        if not (isinstance(idx, pd.RangeIndex) and idx.start == 0 and idx.step == 1):
+            levels = idx.nlevels
+            names = ["" if n is None else str(n) for n in idx.names]
+            for i, key in enumerate(head.index):
+                keys = key if levels > 1 else (key,)
+                rows[i] = [_pygrid_cell(k)["v"] for k in keys] + rows[i]
+            columns = names + columns
+            dtypes = [str(idx.get_level_values(k).dtype) for k in range(levels)] + dtypes
         preview = {
             "kind": "table",
-            "columns": [str(c) for c in value.columns],
-            "dtypes": [str(d) for d in value.dtypes],
+            "columns": columns,
+            "dtypes": dtypes,
             "rows": rows,
             "shape": list(value.shape),
         }

@@ -423,6 +423,25 @@ row("객체 모드 DataFrame → table preview 상위 100행 + dtypes + NaN null
   expect(r.preview?.rows?.[0]).toEqual([0, null]);
 });
 
+row("객체 모드 preview — 행 이름(기본 번호가 아닌 인덱스)은 맨 앞 열, MultiIndex는 수준마다", () => {
+  const corr = runConvert(
+    'import pandas as pd\npd.DataFrame({"a": [1.0, 2.0, 4.0], "b": [3.0, 1.0, 0.0]}).corr()',
+    "object",
+  );
+  expect(corr.preview?.columns).toEqual(["", "a", "b"]);
+  expect(["object", "str"]).toContain(corr.preview?.dtypes?.[0]); // pandas 3는 문자열 dtype이 str
+  expect(corr.preview?.rows?.map((r) => r[0])).toEqual(["a", "b"]);
+  expect(corr.shape).toEqual([2, 2]); // 데이터 모양은 그대로
+  const multi = runConvert(
+    'import pandas as pd\npd.DataFrame({"v": [1, 2]}, index=pd.MultiIndex.from_tuples([("x", 1), ("y", 2)], names=["k", "n"]))',
+    "object",
+  );
+  expect(multi.preview?.columns).toEqual(["k", "n", "v"]);
+  expect(multi.preview?.rows?.[1]).toEqual(["y", 2, 2]);
+  const plain = runConvert('import pandas as pd\npd.DataFrame({"v": [1, 2]})', "object");
+  expect(plain.preview?.columns).toEqual(["v"]); // 기본 번호는 붙이지 않는다
+});
+
 // ── 출력 선택(v1.1): variable · columns · rowLimit ────────
 
 row("출력 선택 variable — 지정 전역 변수 (없으면 NameError, #15)", () => {
