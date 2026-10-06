@@ -85,6 +85,15 @@ test("속성 창: 작업 폴더 지정 → 파일 불러오기 → 변수 → �
   await detail.getByLabel("mean 소수 자리").selectOption("0");
   await expect(detail.getByRole("cell", { name: "40", exact: true })).toBeVisible();
   await expect(detail.getByRole("cell", { name: "3.00" }).first()).toBeVisible(); // count 열은 전체(2자리) 그대로
+  // 열 머리 오른쪽 선을 끌어 열 너비 조절
+  const th = detail.locator("thead th").nth(1);
+  const w0 = (await th.boundingBox())!.width;
+  const sep = (await detail.getByRole("separator", { name: "열 너비 조절" }).nth(1).boundingBox())!;
+  await page.mouse.move(sep.x + sep.width / 2, sep.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(sep.x + sep.width / 2 + 80, sep.y + 10, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await th.boundingBox())!.width).toBeGreaterThan(w0 + 60);
   await detail.getByRole("button", { name: "스프레드시트에 보이기" }).click();
   await page.getByRole("button", { name: "시트에 보이기", exact: true }).click();
   await expect

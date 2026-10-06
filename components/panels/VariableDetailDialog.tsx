@@ -6,7 +6,7 @@
 //  그 밖의 값: repr 원문
 // 런타임 객체 모드 실행(client.run)으로 미리보기를 받는다 — 셀에는 아무것도 쓰지 않는다.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChartLineUp, Table } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +53,62 @@ function DigitsSelect({ value, onChange, label, inherit }: { value: number | nul
   );
 }
 
+/** 열 너비를 마우스로 — 처음 그려진 너비를 재서 고정 레이아웃으로 바꾸고, 머리 오른쪽 선을 끌어 조절 */
+function ResizableTable({ head, children, className }: { head: ReactNode[]; children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLTableElement>(null);
+  const [widths, setWidths] = useState<number[] | null>(null);
+  useLayoutEffect(() => {
+    if (widths || !ref.current) return;
+    setWidths([...ref.current.querySelectorAll("thead th")].map((th) => (th as HTMLElement).offsetWidth));
+  }, [widths]);
+  const drag = (i: number) => (e: React.PointerEvent) => {
+    if (!widths) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = widths[i];
+    const move = (ev: PointerEvent) =>
+      setWidths((w) => w && w.map((x, k) => (k === i ? Math.max(40, w0 + ev.clientX - x0) : x)));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <table
+      ref={ref}
+      className={cn("border-collapse [&_td]:border-r [&_td]:border-border/60 [&_th]:border-r [&_th]:border-border/60", className)}
+      style={widths ? { tableLayout: "fixed", width: widths.reduce((a, b) => a + b, 0) } : { width: "100%" }}
+    >
+      {widths && (
+        <colgroup>
+          {widths.map((w, i) => (
+            <col key={i} style={{ width: w }} />
+          ))}
+        </colgroup>
+      )}
+      <thead className="sticky top-0 z-10 bg-muted">
+        <tr>
+          {head.map((h, i) => (
+            <th key={i} className="relative border-b px-2 py-1 text-left align-top">
+              {h}
+              <span
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="열 너비 조절"
+                onPointerDown={drag(i)}
+                className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-primary/30"
+              />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      {children}
+    </table>
+  );
+}
+
 function PreviewView({ p }: { p: PreviewPayload | { kind: "error"; message: string } | null }) {
   // 전체 소수 자리 + 열마다 덮어쓰기(null = 전체를 따름)
   const [digits, setDigits] = useState(DEFAULT_DIGITS);
@@ -88,26 +144,26 @@ function PreviewView({ p }: { p: PreviewPayload | { kind: "error"; message: stri
     <div className="grid min-w-0 gap-2">
       {decimalCol.some(Boolean) && toolbar}
       <div className="max-h-[55vh] overflow-auto rounded border">
-        <table className="w-full border-collapse font-mono text-xs tabular-nums">
-          <thead className="sticky top-0 bg-muted">
-            <tr>
-              <th className="border-b px-2 py-1 text-right font-normal text-muted-foreground">#</th>
-              {p.columns.map((c, i) => (
-                <th key={i} className="border-b px-2 py-1 text-left align-top">
-                  <div>{c}</div>
-                  <div className="font-normal text-muted-foreground">{p.dtypes[i]}</div>
-                  {decimalCol[i] && (
-                    <DigitsSelect
-                      inherit
-                      value={colDigits[i] ?? null}
-                      onChange={(d) => setColDigits((m) => ({ ...m, [i]: d }))}
-                      label={`${c} 소수 자리`}
-                    />
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
+        <ResizableTable
+          className="font-mono text-xs tabular-nums [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:whitespace-nowrap"
+          head={[
+            <span key="#" className="block text-right font-normal text-muted-foreground">#</span>,
+            ...p.columns.map((c, i) => (
+              <div key={i} className="overflow-hidden">
+                <div className="truncate" title={c}>{c}</div>
+                <div className="truncate font-normal text-muted-foreground">{p.dtypes[i]}</div>
+                {decimalCol[i] && (
+                  <DigitsSelect
+                    inherit
+                    value={colDigits[i] ?? null}
+                    onChange={(d) => setColDigits((m) => ({ ...m, [i]: d }))}
+                    label={`${c} 소수 자리`}
+                  />
+                )}
+              </div>
+            )),
+          ]}
+        >
           <tbody>
             {p.rows.map((row, r) => (
               <tr key={r} className="border-b last:border-0">
@@ -120,7 +176,7 @@ function PreviewView({ p }: { p: PreviewPayload | { kind: "error"; message: stri
               </tr>
             ))}
           </tbody>
-        </table>
+        </ResizableTable>
       </div>
     </div>
   );
@@ -174,28 +230,25 @@ export default function VariableDetailDialog({
 
         {info.model ? (
           <div className="max-h-[55vh] overflow-auto rounded border">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-muted text-left text-muted-foreground">
-                <tr>
-                  <th className="px-2 py-1">묶음</th>
-                  <th className="px-2 py-1">항목</th>
-                  <th className="px-2 py-1">현재 값</th>
-                  <th className="px-2 py-1">코드</th>
-                </tr>
-              </thead>
+            <ResizableTable
+              className="text-xs"
+              head={["묶음", "항목", "현재 값", "코드"].map((h) => (
+                <span key={h} className="font-normal text-muted-foreground">{h}</span>
+              ))}
+            >
               <tbody>
                 {info.model.members.map((m) => (
                   <tr key={m.expr} className="border-t align-top">
                     <td className="px-2 py-1 text-muted-foreground">{m.group}</td>
                     <td className="px-2 py-1">{m.label}</td>
-                    <td className="max-w-56 truncate px-2 py-1 font-mono" title={m.preview}>
+                    <td className="truncate px-2 py-1 font-mono" title={m.preview}>
                       {m.preview}
                     </td>
                     <td className="px-2 py-1 font-mono text-muted-foreground">{m.code}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ResizableTable>
           </div>
         ) : (
           <div className="grid min-w-0 gap-2">
