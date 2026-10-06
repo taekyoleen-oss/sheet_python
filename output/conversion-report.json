@@ -100,6 +100,10 @@
     "pass": true
   },
   {
+    "row": "객체 모드 preview — 행 이름(기본 번호가 아닌 인덱스)은 맨 앞 열, MultiIndex는 수준마다",
+    "pass": true
+  },
+  {
     "row": "출력 선택 variable — 지정 전역 변수 (없으면 NameError, #15)",
     "pass": true
   },
