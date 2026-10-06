@@ -70,10 +70,10 @@ function ensureExcelSupport(py: PyodideInterface, code: string): Promise<void> {
   if (!EXCEL_CODE_RE.test(code)) return Promise.resolve();
   excelSupport ??= (async () => {
     try {
-      await py.loadPackage("openpyxl");
+      await py.loadPackage("openpyxl", { messageCallback: () => {} });
     } catch {
       try {
-        await py.loadPackage("micropip");
+        await py.loadPackage("micropip", { messageCallback: () => {} });
         const micropip = py.pyimport("micropip") as { install(pkg: string): Promise<void> };
         await micropip.install("openpyxl");
       } catch (err) {
@@ -94,7 +94,8 @@ function ensureExcelSupport(py: PyodideInterface, code: string): Promise<void> {
 async function loadImports(py: PyodideInterface, code: string): Promise<void> {
   await ensureExcelSupport(py, code); // 내부에서 모든 실패를 삼킨다 — 실행을 막지 않는다
   try {
-    await py.loadPackagesFromImports(code);
+    // 로더 안내("… already loaded", "Loading …")는 사용자 출력이 아니다 — 일반 파이썬처럼 print만 보이게
+    await py.loadPackagesFromImports(code, { messageCallback: () => {} });
   } catch {
     // 구문 오류 등은 _pygrid_run이 더 나은 트레이스백으로 보고한다
   }

@@ -424,19 +424,24 @@ function CellResult({ block }: { block: PyBlock }) {
             </pre>
           )}
           {isError ? (
-            <div className="px-3 py-1 text-xs text-destructive">
-              {last.summaryKo && <p>{last.summaryKo}</p>}
-              {last.traceback && (
-                <pre className="mt-1 overflow-x-auto font-mono text-[11px] leading-4">
+            // 일반 파이썬처럼 트레이스백이 먼저, 한국어 요약은 그 아래 도움말로
+            <div className="bg-destructive/5 px-3 py-1 text-xs">
+              {last.traceback ? (
+                <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs leading-5 text-destructive">
                   {last.traceback}
                 </pre>
+              ) : (
+                last.summaryKo && <p className="font-mono text-destructive">{last.summaryKo}</p>
+              )}
+              {last.traceback && last.summaryKo && (
+                <p className="mt-1 text-[11px] text-muted-foreground">도움말: {last.summaryKo}</p>
               )}
             </div>
           ) : last.imageBlobId ? (
             <PreviewImage blobId={last.imageBlobId} />
           ) : preview?.kind === "table" ? (
             <PreviewTable preview={preview} />
-          ) : preview?.kind === "repr" && preview.repr ? (
+          ) : preview?.kind === "repr" && preview.repr && preview.repr !== "None" ? ( // None(print 등)은 일반 파이썬처럼 표시 안 함
             <pre className="overflow-x-auto px-3 py-1 font-mono text-xs leading-5">
               {preview.repr}
             </pre>

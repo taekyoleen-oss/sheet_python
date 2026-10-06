@@ -2,7 +2,17 @@
 
 // CodeMirror 6 파이썬 편집기 — xl("...") 리터럴 하이라이트 + 커서 시 그리드 범위 하이라이트(§4.8)
 
-import { python } from "@codemirror/lang-python";
+import {
+  acceptCompletion,
+  completionStatus,
+  startCompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
+import { indentLess, indentMore } from "@codemirror/commands";
+import { python, pythonLanguage } from "@codemirror/lang-python";
+import { indentUnit } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import {
   Decoration,
@@ -18,6 +28,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
 import { parseA1 } from "@/lib/grid/a1";
 import { useWorkbookStore } from "@/lib/grid/model";
+import { getRuntimeClient } from "@/lib/runtime/client";
 import { PLACEHOLDER_RE } from "@/lib/grid/snippet-placeholders";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +82,81 @@ const placeholderHighlighter = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations },
 );
+
+// ── 런타임 자동완성: 실행으로 만든 변수·속성(df.)·열 이름(df[") ─────────────────────────
+// 런타임이 한가할 때만 묻는다(실행 중이면 기본 완성만). 결과는 잠깐 캐시한다.
+const DOTTED = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/.source;
+const cache = new Map<string, { at: number; names: string[] }>();
+
+/** 파이썬 식을 평가해 문자열 목록을 받는다 — repr('a', "b") 목록을 그대로 파싱 */
+async function runtimeNames(expr: string): Promise<string[]> {
+  const hit = cache.get(expr);
+  if (hit && performance.now() - hit.at < 3000) return hit.names;
+  const client = getRuntimeClient();
+  if (client.getStatus() !== "ready") return [];
+  const { repr } = await client.repl(expr, 5);
+  const names: string[] = [];
+  for (const m of (repr ?? "").matchAll(/'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g)) names.push(m[1] ?? m[2]);
+  cache.set(expr, { at: performance.now(), names });
+  return names;
+}
+
+async function runtimeCompletions(ctx: CompletionContext): Promise<CompletionResult | null> {
+  // df["… → 열 이름
+  const key = ctx.matchBefore(new RegExp(`(${DOTTED})\\[(["'])[^"']*$`));
+  if (key) {
+    const [, obj, q] = /^(.*?)\[(["'])/.exec(key.text) ?? [];
+    const cols = await runtimeNames(`[str(c) for c in getattr(${obj}, "columns", [])]`).catch(() => []);
+    const from = key.from + key.text.indexOf(q) + 1;
+    return cols.length ? { from, options: cols.map((c) => ({ label: c, type: "property", apply: c })), validFor: /^[^"']*$/ } : null;
+  }
+  // obj.attr → dir(obj)
+  const dot = ctx.matchBefore(new RegExp(`${DOTTED}\\.\\w*$`));
+  if (dot) {
+    const at = dot.text.lastIndexOf(".");
+    const obj = dot.text.slice(0, at);
+    const names = await runtimeNames(`[n for n in dir(${obj}) if not n.startswith("_")]`).catch(() => []);
+    return names.length
+      ? { from: dot.from + at + 1, options: names.map((n): Completion => ({ label: n, type: "method" })), validFor: /^\w*$/ }
+      : null;
+  }
+  // 이름 → 실행으로 만든 전역 변수 + sheet()
+  const word = ctx.matchBefore(/[A-Za-z_]\w*$/);
+  if (!word && !ctx.explicit) return null;
+  const vars = await runtimeNames(
+    `[n for n, v in globals().items() if not n.startswith("_") and type(v).__name__ != "module"]`,
+  ).catch(() => []);
+  return {
+    from: word?.from ?? ctx.pos,
+    options: [
+      { label: "sheet", type: "function", detail: '("A1:C10", headers=True)', apply: 'sheet("' },
+      // 이 코드에 나오는 이름은 파이썬 기본 완성이 이미 낸다 — 겹치지 않게 뺀다
+      ...vars
+        .filter((n) => !new RegExp(`\\b${n}\\b`).test(ctx.state.doc.toString()))
+        .map((n): Completion => ({ label: n, type: "variable", boost: 1 })),
+    ],
+    validFor: /^\w*$/,
+  };
+}
+
+/** Tab: 자동완성 수락 → 줄 중간이면 자동완성 열기 → 그 밖엔 들여쓰기(4칸). Shift+Tab 내어쓰기 */
+const tabKeymap = keymap.of([
+  {
+    key: "Tab",
+    run: (view) => {
+      if (acceptCompletion(view)) return true;
+      const sel = view.state.selection.main;
+      const before = view.state.doc.lineAt(sel.head).text.slice(0, sel.head - view.state.doc.lineAt(sel.head).from);
+      if (sel.empty && /[\w.\["']$/.test(before) && completionStatus(view.state) === null) return startCompletion(view);
+      if (sel.empty && before.trim() !== "") {
+        view.dispatch(view.state.replaceSelection("    "));
+        return true;
+      }
+      return indentMore(view);
+    },
+    shift: indentLess,
+  },
+]);
 
 const editorTheme = EditorView.theme({
   "&": { fontSize: "11px", backgroundColor: "var(--code-bg)" },
@@ -151,6 +237,9 @@ export default function CodeEditor({
       extensions: [
         basicSetup,
         python(),
+        indentUnit.of("    "), // PEP 8 — 4칸
+        pythonLanguage.data.of({ autocomplete: runtimeCompletions }),
+        Prec.high(tabKeymap),
         xlHighlighter,
         placeholderHighlighter,
         editorTheme,

@@ -59,9 +59,12 @@ export function makeView(): WorkbookView {
         code,
         outputMode: first && !onSheet(b, first) ? ("object" as const) : outputMode,
         includeIndex,
-        output,
+        // 시트에 없는 출력은 일반 파이썬처럼 마지막 줄의 값 — 남아 있는 출력 지정(변수·열·행)은 시트용
+        output: first && !onSheet(b, first) ? undefined : output,
         kind,
-        outputs: outputs?.map((o) => (onSheet(b, o) ? o : { ...o, mode: "object" as const })),
+        outputs: outputs?.map((o) =>
+          onSheet(b, o) ? o : { ...o, mode: "object" as const, selection: undefined },
+        ),
       };
     }),
     sheetOrder: wb.sheets.map((s) => s.id),
