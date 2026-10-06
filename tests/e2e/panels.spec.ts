@@ -152,8 +152,12 @@ test("참조 삽입 바 + 진단 탭 스모크", async ({ page }) => {
     )
     .toContain('sheet("A1:B3", headers=True)');
 
-  // 코드 커밋 → 자동 계산(§2.3.3)이 큐잉된다. 이 실행(부트 포함)이 끝나 spill이 생길 때까지
-  // 기다린 뒤 오류 단계로 — 안 기다리면 큐의 성공 실행이 오류 결과를 덮는다.
+  // 코드 수정만으로는 실행되지 않는다 — dirty 표시만, 실행은 ▶
+  await page.waitForTimeout(1500);
+  expect(
+    await page.evaluate(() => (window as any).__pygridStore.getState().workbook.pyBlocks[0].last ?? null),
+  ).toBeNull();
+  await page.getByRole("button", { name: "실행", exact: true }).click();
   await expect
     .poll(
       () =>

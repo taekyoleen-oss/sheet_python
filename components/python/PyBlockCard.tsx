@@ -53,7 +53,7 @@ import ModelResultDialog from "@/components/python/ModelResultDialog";
 import { PreviewImage, PreviewTable } from "@/components/panels/OutputPreviewTab";
 import type { PreviewPayload } from "@/lib/runtime/protocol";
 import { formatA1 } from "@/lib/grid/a1";
-import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
+import { notifyCodeEdit, notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { codeTitle } from "@/lib/grid/code-sections";
 import { toast } from "sonner";
 import { applyMdAction, renderMarkdown, type MdAction } from "@/lib/grid/markdown";
@@ -667,7 +667,7 @@ export default function PyBlockCard({
     const changed =
       store().workbook.pyBlocks.find((b) => b.id === block.id)?.code !== value;
     store().setBlockCode(block.id, value);
-    if (notify && changed) notifyWorkbookEdit([], [block.id]);
+    if (notify && changed) notifyCodeEdit(block.id); // 수정 중엔 실행하지 않는다 — 이전 결과 유지, ▶로 실행
   };
 
   const onChange = (value: string) => {

@@ -35,7 +35,7 @@ import {
 } from "@/lib/ai/chat";
 import { sheetOverview } from "@/lib/ai/schema";
 import { applyCellProposal, type BlockProposal, type CellProposal, type Proposal } from "@/lib/ai/tools";
-import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
+import { notifyCodeEdit, notifyWorkbookEdit } from "@/lib/grid/calc-host";
 import { codeTitle } from "@/lib/grid/code-sections";
 import { appendSnippetToBlock, insertSnippetAsBlock } from "@/lib/grid/insert-snippet";
 import { renderMarkdown } from "@/lib/grid/markdown";
@@ -86,7 +86,7 @@ function insertChatCode(
     }
     if (opts.replace) st.setBlockCode(refId, code); // 제안은 블록 전체 코드 = 교체 (1 undo)
     else if (!appendSnippetToBlock(refId, code)) return false;
-    notifyWorkbookEdit([], [refId]);
+    notifyCodeEdit(refId); // 코드 수정 — 실행은 ▶로
     targetId = refId;
   } else {
     const res = insertSnippetAsBlock(

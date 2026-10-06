@@ -445,6 +445,12 @@ export function notifyWorkbookEdit(ranges: SheetRange[], editedBlockIds: string[
   }
 }
 
+/** 코드 수정 통지 — 계산 모드와 상관없이 실행하지 않고 dirty 표시만(이전 결과 유지). 실행은 ▶·전체 실행이 한다 */
+export function notifyCodeEdit(blockId: string): void {
+  if (getState().workbook.pyBlocks.length === 0) return;
+  void markDirtyManual([], [blockId]);
+}
+
 // 미니 수식 재계산으로 v가 바뀐 셀 → 의존 Python 블록 dirty/재실행 (부록 I.2).
 // 스토어가 직접 import하면 순환이라 콜백으로 등록한다.
 setFormulaNotifier((ranges) => notifyWorkbookEdit(ranges));

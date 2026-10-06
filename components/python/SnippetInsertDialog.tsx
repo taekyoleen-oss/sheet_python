@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { sheetSchemas } from "@/lib/ai/schema";
 import { formatA1 } from "@/lib/grid/a1";
-import { notifyWorkbookEdit } from "@/lib/grid/calc-host";
+import { notifyCodeEdit } from "@/lib/grid/calc-host";
 import { codeTitle } from "@/lib/grid/code-sections";
 import { appendSnippetToBlock, insertSnippetAsBlock } from "@/lib/grid/insert-snippet";
 import { useWorkbookStore } from "@/lib/grid/model";
@@ -275,7 +275,7 @@ export default function SnippetInsertDialog() {
     let targetId: string;
     if (placement === "append") {
       if (!refBlock || !appendSnippetToBlock(refBlock.id, text)) return;
-      notifyWorkbookEdit([], [refBlock.id]); // 타이핑 커밋과 같은 통지 경로 (§2.3.3)
+      notifyCodeEdit(refBlock.id); // 타이핑 커밋과 같은 통지 경로 — 실행은 ▶로
       targetId = refBlock.id;
     } else {
       const res = insertSnippetAsBlock(refBlock?.id ?? null, placement, snippet.label, text);
